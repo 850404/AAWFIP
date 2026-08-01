@@ -1,142 +1,38 @@
-[
-  {
-    "id": "wellcome-trust",
-    "name": "Wellcome Trust",
-    "url": "https://wellcome.org/research-funding/schemes"
-  },
-  {
-    "id": "tiny-beam-fund",
-    "name": "Tiny Beam Fund",
-    "url": "https://tinybeamfund.org/About-Us"
-  },
-  {
-    "id": "animal-charity-evaluators",
-    "name": "Animal Charity Evaluators (ACE)",
-    "url": "https://animalcharityevaluators.org/movement-grants/"
-  },
-  {
-    "id": "templeton-world-charity-foundation",
-    "name": "Templeton World Charity Foundation (TWCF)",
-    "url": "https://www.templetonworldcharity.org/our-priorities"
-  },
-  {
-    "id": "ea-animal-welfare-fund",
-    "name": "EA Funds \\u2014 Animal Welfare Fund (AWF)",
-    "url": "https://funds.effectivealtruism.org/funds/animal-welfare"
-  },
-  {
-    "id": "animal-welfare-foundation-bva",
-    "name": "Animal Welfare Foundation (British Veterinary Association)",
-    "url": "https://www.animalwelfarefoundation.org.uk/about-us/"
-  },
-  {
-    "id": "animal-welfare-institute",
-    "name": "Animal Welfare Institute (AWI)",
-    "url": "https://awionline.org/content/funding-opportunities-awi"
-  },
-  {
-    "id": "aza-animal-care-wellbeing-grants-fund",
-    "name": "AZA Animal Care & Wellbeing Grants Fund",
-    "url": "https://www.aza.org/animal-care-and-wellbeing-grants-fund"
-  },
-  {
-    "id": "gates-foundation",
-    "name": "Gates Foundation (formerly Bill & Melinda Gates Foundation)",
-    "url": "https://www.gatesfoundation.org/about/how-we-work/grant-opportunities"
-  },
-  {
-    "id": "usaid",
-    "name": "U.S. Agency for International Development (USAID)",
-    "url": "https://en.wikipedia.org/wiki/United_States_Agency_for_International_Development"
-  },
-  {
-    "id": "eu-horizon-europe",
-    "name": "EU Horizon Europe (European Commission)",
-    "url": "https://research-and-innovation.ec.europa.eu/funding/funding-opportunities/funding-programmes-and-open-calls/horizon-europe_en"
-  },
-  {
-    "id": "senterra-funders",
-    "name": "Senterra Funders (formerly Farmed Animal Funders / FAF)",
-    "url": "https://www.senterrafunders.org/"
-  },
-  {
-    "id": "fao",
-    "name": "Food and Agriculture Organization of the United Nations (FAO)",
-    "url": "https://www.fao.org/home/en"
-  },
-  {
-    "id": "joanna-toole-foundation",
-    "name": "The Joanna Toole Foundation (JTF)",
-    "url": "https://www.joannatoolefoundation.org/"
-  },
-  {
-    "id": "pew-charitable-trusts",
-    "name": "The Pew Charitable Trusts",
-    "url": "https://www.pew.org/en/topics/protect-marine-life"
-  },
-  {
-    "id": "rockefeller-foundation",
-    "name": "The Rockefeller Foundation",
-    "url": "https://www.rockefellerfoundation.org/what-we-do/food/"
-  },
-  {
-    "id": "morris-animal-foundation",
-    "name": "Morris Animal Foundation",
-    "url": "https://www.morrisanimalfoundation.org/apply"
-  },
-  {
-    "id": "norad",
-    "name": "Norad (Norwegian Agency for Development Cooperation)",
-    "url": "https://www.norad.no/en/front/thematic-areas/climate-change-and-environment/fish-for-development/"
-  },
-  {
-    "id": "ciwf",
-    "name": "Compassion in World Farming (CIWF)",
-    "url": "https://www.ciwf.org.uk/farm-animals/fish/fish-welfare/"
-  },
-  {
-    "id": "marchig-animal-welfare-trust",
-    "name": "The Marchig Animal Welfare Trust",
-    "url": "https://marchigtrust.org/"
-  },
-  {
-    "id": "packard-foundation",
-    "name": "The David and Lucile Packard Foundation",
-    "url": "https://www.packard.org/initiative/ocean-initiative/"
-  },
-  {
-    "id": "ufaw",
-    "name": "Science for Animal Welfare (formerly Universities Federation for Animal Welfare, UFAW)",
-    "url": "https://scienceforanimalwelfare.org/"
-  },
-  {
-    "id": "hsa",
-    "name": "Humane Slaughter Association (HSA)",
-    "url": "https://www.hsa.org.uk/grants-awards/grants-awards"
-  },
-  {
-    "id": "aquatic-life-institute",
-    "name": "Aquatic Life Institute (ALI)",
-    "url": "https://www.ali.fish/about"
-  },
-  {
-    "id": "worldfish",
-    "name": "WorldFish",
-    "url": "https://worldfishcenter.org/about-us"
-  },
-  {
-    "id": "eurogroup-for-animals",
-    "name": "Eurogroup for Animals",
-    "url": "https://www.eurogroupforanimals.org/who-we-are"
-  },
-  {
-    "id": "sustainable-fisheries-partnership",
-    "name": "Sustainable Fisheries Partnership (SFP)",
-    "url": "https://sustainablefish.org/about-us/"
-  },
-  {
-    "id": "aquaculture-stewardship-council",
-    "name": "Aquaculture Stewardship Council (ASC)",
-    "url": "https://asc-aqua.org/about-asc/"
-  }
-]
+# AAWFIP — Live web check setup
+
+This repo adds one thing on top of AAWFIP.html itself: a scheduled,
+serverless check of each funder's real website, so the "Live web
+check" section in the Notes & Tracker view can flag when a funder's
+page actually changes — without you (or Claude) having to run and
+maintain a server.
+
+## How it works
+
+1. `.github/workflows/check-funders.yml` runs on a schedule (daily by
+   default — edit the cron line to change that).
+2. It runs `scripts/check-funders.mjs`, which fetches every URL in
+   `data/funder-sources.json`, hashes the page content, and writes the
+   result to `data/funder-web-snapshot.json`.
+3. The workflow commits that updated JSON file back into the repo.
+4. `AAWFIP.html`'s Tracker view fetches that JSON file directly from
+   GitHub (as a plain static file — no server, no proxy needed) and
+   compares it against what you've already reviewed.
+
+Nothing about your notes, scores, or uploaded projects goes anywhere —
+only the small check-script runs, and only against funders' own public
+pages.
+
+## Running the check manually
+
+On GitHub, go to the "Actions" tab → "Check funder websites for
+changes" → "Run workflow". After it finishes (a minute or two),
+`data/funder-web-snapshot.json` will have real content.
+
+## Editing what gets checked
+
+Edit `data/funder-sources.json` any time — add, remove, or fix a
+funder's monitored URL.
+
+## Changing the check frequency
+
+Edit the `cron` line in `.github/workflows/check-funders.yml`.
