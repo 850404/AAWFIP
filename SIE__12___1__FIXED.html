@@ -1,0 +1,4099 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIE — Strategic Intelligence Engine</title>
+<style>
+/* ================================================================
+   SIE — Strategic Intelligence Engine (standalone)
+   ----------------------------------------------------------------
+   Completely independent of AAWFIP: this file has its own markup,
+   its own styles, and its own script. It does not load, import, or
+   reference any AAWFIP file or JavaScript module. On startup it only
+   reads the AAWFIP_StrategicDatabase key that AAWFIP's own
+   "Synchronise Strategic Intelligence" button writes to in the
+   browser's localStorage — nothing is written automatically, and
+   AAWFIP's own file, code, and storage are never touched or modified
+   just by opening or using this page.
+
+   The one exception is the explicit Backup > Import (Restore) action
+   in the header: only when a person picks a backup JSON file and
+   confirms the restore in the on-screen dialog does this file call
+   localStorage.setItem on that same AAWFIP_StrategicDatabase key, to
+   write the restored data back for AAWFIP to pick up. There is no
+   other write path anywhere in this file — search for
+   localStorage.setItem/removeItem to see the single call site.
+
+   Design tokens below are copied from AAWFIP's own :root block
+   (same palette, type, and general visual language) so the two
+   applications read as part of the same product family, per this
+   stage's brief to reuse AAWFIP's existing design language.
+
+   Scope of this stage, deliberately: load the Strategic Database
+   and validate that what was loaded actually looks like one —
+   nothing more. No analytics, scoring, cross-referencing, or
+   ecosystem-mapping features live here yet.
+   ================================================================ */
+:root {
+  --ink-deep:      #06141F;
+  --ink-mid:       #0B2136;
+  --ink-panel:     #102A40;
+  --line:          #1D3E56;
+  --teal:          #1F8A8C;
+  --teal-bright:   #35B4B0;
+  --seafoam:       #8FE3D3;
+  --coral:         #E8734A;
+  --text-hi:       #EAF3F3;
+  --text-mid:      #A9C2C6;
+  --text-lo:       #79939A;
+  --font-display:  'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+  --font-body:     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono:     'SF Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
+  --radius:        3px;
+  --shadow:        0 8px 24px rgba(2,10,16,0.35);
+  --transition:    180ms ease;
+
+  /* Ecosystem Mapping node colours \u2014 chosen to stay within the same
+     dark, desaturated palette as the rest of the app while still
+     giving each of the seven entity kinds a distinct hue. */
+  --eco-project:      #8FE3D3;
+  --eco-organisation: #35B4B0;
+  --eco-university:   #6F9FD8;
+  --eco-ngo:           #D2B24C;
+  --eco-government:   #A487D9;
+  --eco-funder:        #E8734A;
+  --eco-researcher:    #EAF3F3;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--ink-deep);
+  color: var(--text-hi);
+  font-family: var(--font-body);
+}
+
+body { min-height: 100vh; }
+
+a { color: inherit; text-decoration: none; }
+
+::selection { background: var(--teal); color: var(--ink-deep); }
+
+:focus-visible {
+  outline: 2px solid var(--seafoam);
+  outline-offset: 2px;
+}
+
+/* ---------- Header ---------- */
+.header {
+  border-bottom: 1px solid var(--line);
+  background: var(--ink-mid);
+  padding: 16px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+/* ---------- Backup (export / import) controls ---------- */
+.backup-controls { display: flex; align-items: center; gap: 8px; }
+.backup-btn {
+  background: var(--ink-panel);
+  border: 1px solid var(--line);
+  color: var(--text-mid);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 500;
+  border-radius: var(--radius);
+  padding: 7px 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: border-color var(--transition), color var(--transition);
+}
+.backup-btn:hover:not(:disabled) { border-color: var(--teal-bright); color: var(--text-hi); }
+.backup-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.backup-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.backup-btn.busy svg { animation: spin 0.9s linear infinite; }
+.backup-status {
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  color: var(--text-lo);
+  max-width: 220px;
+}
+.backup-status.ok { color: var(--seafoam); }
+.backup-status.err { color: var(--coral); }
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  letter-spacing: 0.01em;
+}
+
+.brand-mark { width: 30px; height: 30px; flex-shrink: 0; }
+
+.brand-sub {
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  color: var(--text-lo);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  border-left: 1px solid var(--line);
+  padding-left: 12px;
+  margin-left: 2px;
+}
+
+/* ---------- Main shell ---------- */
+.main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 48px 28px 60px;
+}
+
+.page-heading { margin-bottom: 28px; }
+.page-heading h1 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.5rem;
+  margin-bottom: 6px;
+}
+.page-heading .meta {
+  font-size: 0.82rem;
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+}
+
+/* ---------- Panel (shared shell for every state) ---------- */
+.panel {
+  background: var(--ink-mid);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 32px;
+  box-shadow: var(--shadow);
+}
+
+/* ---------- Loading state ---------- */
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-state { text-align: center; padding: 52px 24px; }
+.spinner {
+  width: 30px; height: 30px;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  border: 2.5px solid var(--line);
+  border-top-color: var(--teal-bright);
+  animation: spin 0.75s linear infinite;
+}
+.spinner.small { width: 14px; height: 14px; border-width: 2px; margin: 0; }
+.loading-state p {
+  color: var(--text-mid);
+  font-size: 0.9rem;
+  font-family: var(--font-mono);
+}
+
+/* ---------- Confirm-restore modal ---------- */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(2,10,16,0.6);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  z-index: 100;
+}
+.modal {
+  background: var(--ink-mid);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  max-width: 460px;
+  width: 100%;
+  padding: 26px 28px;
+}
+.modal h2 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.15rem;
+  margin-bottom: 10px;
+}
+.modal p { font-size: 0.86rem; color: var(--text-mid); line-height: 1.6; margin-bottom: 10px; }
+.modal-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin: 14px 0 18px;
+}
+.modal-compare .col { background: var(--ink-deep); padding: 12px 14px; }
+.modal-compare .col h4 {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-lo);
+  margin-bottom: 8px;
+}
+.modal-compare .col div { font-size: 0.8rem; color: var(--text-mid); margin-bottom: 3px; }
+.modal-warning {
+  font-size: 0.8rem;
+  color: var(--coral);
+  background: rgba(232,115,74,0.09);
+  border: 1px solid var(--coral);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 18px;
+}
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.modal-btn {
+  font-family: var(--font-body);
+  font-size: 0.84rem;
+  font-weight: 600;
+  border-radius: var(--radius);
+  padding: 9px 16px;
+  cursor: pointer;
+}
+.modal-btn.cancel { background: transparent; border: 1px solid var(--line); color: var(--text-mid); }
+.modal-btn.cancel:hover { color: var(--text-hi); border-color: var(--text-lo); }
+.modal-btn.confirm { background: var(--coral); border: 1px solid var(--coral); color: var(--ink-deep); }
+.modal-btn.confirm:hover { background: #f0855c; }
+
+/* ---------- Empty / not-yet-synced state ---------- */
+.empty-state { text-align: center; padding: 40px 24px; }
+.empty-state .empty-mark {
+  width: 42px; height: 42px;
+  margin: 0 auto 18px;
+  color: var(--text-lo);
+}
+.empty-state h2 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.2rem;
+  margin-bottom: 10px;
+}
+.empty-state p {
+  color: var(--text-mid);
+  font-size: 0.94rem;
+  line-height: 1.65;
+  max-width: 440px;
+  margin: 0 auto;
+}
+.empty-state code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--seafoam);
+  background: var(--ink-deep);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1px 6px;
+}
+
+/* ---------- Invalid-data state ---------- */
+.invalid-state .empty-mark { color: var(--coral); }
+
+/* ---------- Validated state ---------- */
+.validated-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.validated-badge {
+  width: 34px; height: 34px;
+  flex-shrink: 0;
+  color: var(--seafoam);
+}
+.validated-header h2 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.15rem;
+}
+.validated-header .sub {
+  font-size: 0.8rem;
+  color: var(--text-lo);
+  margin-top: 2px;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px 18px;
+  margin-bottom: 26px;
+}
+.field-cell {
+  background: var(--ink-deep);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.field-cell .num {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  color: var(--seafoam);
+}
+.field-cell .label {
+  margin-top: 4px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-lo);
+}
+
+.section-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-lo);
+  margin-bottom: 10px;
+}
+
+/* ---------- Strategic Dashboard stat strip ---------- */
+.dash-heading {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.1rem;
+  margin-bottom: 14px;
+}
+.dash-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 30px;
+}
+.dash-stat-cell {
+  background: var(--ink-deep);
+  padding: 18px 18px;
+}
+.dash-stat-cell .num {
+  font-family: var(--font-display);
+  font-size: 1.65rem;
+  color: var(--seafoam);
+  line-height: 1;
+  word-break: break-word;
+}
+.dash-stat-cell .label {
+  margin-top: 7px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-lo);
+}
+
+.check-list {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px 18px;
+}
+.check-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.86rem;
+  color: var(--text-mid);
+}
+.check-icon { flex-shrink: 0; width: 15px; height: 15px; }
+.check-list li.present .check-icon { color: var(--seafoam); }
+.check-list li.missing .check-icon { color: var(--text-lo); }
+.check-list li.missing { color: var(--text-lo); }
+
+.status-note {
+  margin-top: 24px;
+  font-size: 0.76rem;
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+}
+
+/* ---------- Data Integrity & Synchronisation ---------- */
+.integrity-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  margin-bottom: 18px;
+  font-size: 0.88rem;
+  color: var(--text-hi);
+}
+.integrity-banner.ok { border-color: var(--teal); background: rgba(31,138,140,0.09); }
+.integrity-banner.warn { border-color: var(--coral); background: rgba(232,115,74,0.09); }
+.integrity-pill {
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+.integrity-pill.ok   { background: rgba(143,227,211,0.16); color: var(--seafoam); }
+.integrity-pill.warn { background: rgba(232,115,74,0.18);  color: var(--coral); }
+.integrity-pill.fail { background: rgba(232,115,74,0.30);  color: var(--coral); }
+.integrity-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.86rem;
+  color: var(--text-mid);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.integrity-row:last-child { border-bottom: none; }
+.integrity-row .integrity-label { flex: 1; }
+.integrity-row .integrity-detail { color: var(--text-lo); font-size: 0.78rem; }
+
+/* ---------- Global Search ---------- */
+.search-section { margin-bottom: 28px; }
+.search-input {
+  width: 100%;
+  background: var(--ink-deep);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text-hi);
+  font-family: var(--font-body);
+  font-size: 0.94rem;
+  padding: 11px 14px;
+  transition: border-color var(--transition);
+}
+.search-input::placeholder { color: var(--text-lo); }
+.search-input:focus {
+  border-color: var(--teal-bright);
+  outline: none;
+}
+.search-results { margin-top: 14px; }
+.search-hint {
+  font-size: 0.86rem;
+  color: var(--text-lo);
+  padding: 6px 2px;
+}
+.search-group { margin-bottom: 18px; }
+.search-group:last-child { margin-bottom: 0; }
+.search-group-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--teal-bright);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.search-group-count {
+  font-family: var(--font-mono);
+  color: var(--text-lo);
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 0.72rem;
+}
+.search-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.search-result {
+  background: var(--ink-deep);
+  padding: 10px 14px;
+}
+.search-result-title {
+  font-size: 0.9rem;
+  color: var(--text-hi);
+}
+.search-result-subtitle {
+  margin-top: 2px;
+  font-size: 0.74rem;
+  color: var(--text-lo);
+}
+.search-result-snippet {
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: var(--text-mid);
+  line-height: 1.5;
+}
+.search-more {
+  background: var(--ink-deep);
+  padding: 8px 14px;
+  font-size: 0.76rem;
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+}
+mark {
+  background: var(--teal);
+  color: var(--ink-deep);
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+/* ---------- Filter chips (Global Search + Project Intelligence) ---------- */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+.filter-chip {
+  background: var(--ink-deep);
+  border: 1px solid var(--line);
+  color: var(--text-mid);
+  font-family: var(--font-body);
+  font-size: 0.76rem;
+  border-radius: 999px;
+  padding: 5px 13px;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.filter-chip:hover { border-color: var(--teal-bright); color: var(--text-hi); }
+.filter-chip.active {
+  background: rgba(143,227,211,0.14);
+  border-color: var(--teal-bright);
+  color: var(--seafoam);
+}
+.filter-chip .filter-chip-count {
+  font-family: var(--font-mono);
+  color: var(--text-lo);
+  font-size: 0.7rem;
+}
+.filter-chip.active .filter-chip-count { color: var(--seafoam); }
+
+/* ---------- Project Intelligence ---------- */
+.project-intel { margin-top: 14px; }
+.project-card {
+  background: var(--ink-deep);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  margin-bottom: 16px;
+}
+.project-card:last-child { margin-bottom: 0; }
+.project-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.project-card-header h3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.08rem;
+}
+.project-status-pill {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--seafoam);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+.intel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 18px 22px;
+}
+.intel-block .label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-lo);
+  margin-bottom: 8px;
+}
+.intel-block ul { list-style: none; }
+.intel-block li {
+  font-size: 0.84rem;
+  color: var(--text-mid);
+  line-height: 1.55;
+  padding-left: 13px;
+  position: relative;
+  margin-bottom: 5px;
+}
+.intel-block li::before {
+  content: '\2013';
+  position: absolute;
+  left: 0;
+  color: var(--text-lo);
+}
+.intel-block .empty-note {
+  font-size: 0.82rem;
+  color: var(--text-lo);
+  font-style: italic;
+}
+.intel-block.risks li { color: var(--coral); }
+.intel-block.risks li::before { color: var(--coral); }
+.intel-block.strengths li { color: var(--seafoam); }
+.intel-block.strengths li::before { color: var(--seafoam); }
+.intel-block.missing li { color: var(--text-lo); }
+.overview-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.84rem;
+  color: var(--text-mid);
+  margin-bottom: 8px;
+}
+.overview-fields .row { display: flex; gap: 8px; }
+.overview-fields .row .k {
+  color: var(--text-lo);
+  min-width: 72px;
+  flex-shrink: 0;
+}
+.overview-fields .row .v em, .intel-block p em { color: var(--text-lo); font-style: italic; }
+.intel-block p { font-size: 0.84rem; color: var(--text-mid); line-height: 1.55; }
+
+/* ---------- Ecosystem Mapping ---------- */
+.ecosystem-mapping { margin-top: 14px; }
+.eco-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.eco-search { max-width: 260px; flex-shrink: 0; }
+.eco-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  flex: 1;
+}
+.eco-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text-mid);
+  cursor: pointer;
+  user-select: none;
+}
+.eco-legend-item input { accent-color: var(--teal-bright); }
+.eco-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+.eco-legend-count {
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+}
+.eco-graph-wrap {
+  background: var(--ink-deep);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  position: relative;
+}
+.eco-svg {
+  width: 100%;
+  height: 560px;
+  display: block;
+  cursor: grab;
+}
+.eco-svg:active { cursor: grabbing; }
+.eco-hint {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  color: var(--text-lo);
+  background: rgba(6,20,31,0.72);
+  padding: 3px 8px;
+  border-radius: var(--radius);
+  pointer-events: none;
+}
+.eco-edge {
+  stroke: var(--line);
+  stroke-width: 1;
+  transition: stroke var(--transition), opacity var(--transition);
+}
+.eco-edge-active { stroke: var(--teal-bright); stroke-width: 1.6; }
+.eco-node circle {
+  stroke: var(--ink-deep);
+  stroke-width: 1.5;
+  transition: opacity var(--transition), stroke var(--transition);
+}
+.eco-node { cursor: pointer; }
+.eco-node:hover circle { stroke: var(--seafoam); }
+.eco-label {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  fill: var(--text-mid);
+  pointer-events: none;
+}
+.eco-dim { opacity: 0.14; }
+.eco-detail:empty { display: none; }
+
+/* ---------- Strategic Opportunity Detection ---------- */
+.opportunity-detection { margin-top: 14px; }
+
+/* ---------- Timeline Intelligence ---------- */
+.timeline-intelligence { margin-top: 14px; }
+
+/* ---------- Strategic Reports ---------- */
+.strategic-reports { margin-top: 14px; }
+.reports-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.report-select {
+  background: var(--ink-deep);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text-hi);
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  padding: 9px 12px;
+  min-width: 220px;
+}
+.report-select:focus-visible { outline: 2px solid var(--seafoam); outline-offset: 1px; }
+.report-export-btn {
+  background: var(--teal);
+  border: 1px solid var(--teal-bright);
+  color: var(--ink-deep);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.84rem;
+  border-radius: var(--radius);
+  padding: 9px 16px;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.report-export-btn:hover { background: var(--teal-bright); }
+.report-meta {
+  font-size: 0.76rem;
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+  margin-left: auto;
+}
+.report-doc { padding: 30px 32px; }
+.report-doc-header {
+  margin-bottom: 22px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.report-doc-header h2 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.3rem;
+  margin-bottom: 6px;
+}
+.report-doc-header .report-sub {
+  font-size: 0.8rem;
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+}
+.report-section { margin-bottom: 26px; }
+.report-section:last-child { margin-bottom: 0; }
+.report-section h3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.02rem;
+  margin-bottom: 12px;
+  color: var(--seafoam);
+}
+.report-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+.report-table th, .report-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.report-table th {
+  color: var(--text-lo);
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+}
+.report-table td { color: var(--text-mid); }
+.report-list { list-style: none; }
+.report-list li {
+  font-size: 0.84rem;
+  color: var(--text-mid);
+  line-height: 1.6;
+  padding-left: 13px;
+  position: relative;
+  margin-bottom: 6px;
+}
+.report-list li::before { content: '\2013'; position: absolute; left: 0; color: var(--text-lo); }
+.report-empty { font-size: 0.84rem; color: var(--text-lo); font-style: italic; }
+.report-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 26px;
+}
+.report-summary-cell { background: var(--ink-deep); padding: 14px 16px; }
+.report-summary-cell .num {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  color: var(--seafoam);
+  line-height: 1;
+}
+.report-summary-cell .label {
+  margin-top: 6px;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-lo);
+}
+
+@media print {
+  @page {
+    margin: 1.6cm 1.4cm 1.8cm;
+    @bottom-right { content: 'Page ' counter(page) ' of ' counter(pages); font-size: 8pt; color: #79939A; }
+    @bottom-left { content: 'SIE \u2014 Strategic Intelligence Engine'; font-size: 8pt; color: #79939A; }
+  }
+  body * { visibility: hidden; }
+  #reportPrintArea, #reportPrintArea * { visibility: visible; }
+  #reportPrintArea {
+    position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0;
+    border: none; box-shadow: none;
+  }
+  html, body { background: #ffffff; }
+  #reportPrintArea, #reportPrintArea * {
+    background: #ffffff !important;
+    color: #10202a !important;
+    border-color: #c9d6d6 !important;
+    box-shadow: none !important;
+  }
+  #reportPrintArea h2, #reportPrintArea h3 { color: #0b2136 !important; }
+  #reportPrintArea .report-summary-cell .num { color: #1f8a8c !important; }
+  #reportPrintArea .report-doc { padding: 0; }
+
+  /* Keep summary cells, table rows, list items and section headings
+     from splitting awkwardly across a page boundary. */
+  #reportPrintArea .report-section { break-inside: avoid-page; page-break-inside: avoid; }
+  #reportPrintArea .report-doc-header { break-after: avoid-page; page-break-after: avoid; }
+  #reportPrintArea .report-section h3 { break-after: avoid-page; page-break-after: avoid; }
+  #reportPrintArea .report-table tr { break-inside: avoid-page; page-break-inside: avoid; }
+  #reportPrintArea .report-table thead { display: table-header-group; }
+  #reportPrintArea .report-list li { break-inside: avoid-page; page-break-inside: avoid; }
+  #reportPrintArea .report-summary-strip { break-inside: avoid-page; page-break-inside: avoid; }
+
+  /* A long table/list section is still allowed to start a fresh page
+     rather than leaving a single orphaned row/heading at the bottom
+     of the previous one. */
+  #reportPrintArea .report-section h3 { orphans: 3; widows: 3; }
+}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 32 32" fill="none">
+      <path d="M2 22c3 0 3-3 6-3s3 3 6 3 3-3 6-3 3 3 6 3" stroke="#35B4B0" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M2 16c3 0 3-3 6-3s3 3 6 3 3-3 6-3 3 3 6 3" stroke="#8FE3D3" stroke-width="1.6" stroke-linecap="round" opacity="0.6"/>
+      <circle cx="16" cy="9" r="3.4" stroke="#EAF3F3" stroke-width="1.4"/>
+    </svg>
+    <span>SIE</span>
+    <span class="brand-sub">Strategic Intelligence Engine</span>
+  </div>
+  <div class="backup-controls" id="backupControls">
+    <!-- populated by script below -->
+  </div>
+</header>
+
+<main class="main">
+  <div class="page-heading">
+    <h1>Strategic Intelligence Engine</h1>
+    <div class="meta" id="pageMeta">Loading AAWFIP_StrategicDatabase&hellip;</div>
+  </div>
+
+  <div class="panel" id="panel">
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading AAWFIP_StrategicDatabase&hellip;</p>
+    </div>
+  </div>
+</main>
+
+<div id="modalMount"><!-- confirm-restore modal, populated by script below --></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // The only thing SIE shares with AAWFIP: the localStorage key its
+  // sync button writes to. This module never loads or references any
+  // AAWFIP file, script, or global. It reads this key on every load,
+  // and writes to it in exactly one place — setItem inside
+  // performRestoreFromBackup, run only after a person has picked a
+  // backup file via Backup > Import and explicitly confirmed the
+  // restore dialog. There is no other setItem/removeItem call on this
+  // or any other key anywhere in this file.
+  var STRATEGIC_DB_STORAGE_KEY = 'AAWFIP_StrategicDatabase';
+
+  // The top-level sections a well-formed Strategic Database is
+  // expected to have (matching the schema AAWFIP's own sync module
+  // builds/upgrades). Used only to validate what was loaded — this
+  // list is never written back anywhere.
+  var EXPECTED_COLLECTIONS = [
+    'metadata', 'organisations', 'funders', 'fundingSchemes',
+    'contacts', 'changeLog', 'projects', 'applicantCompetitiveness',
+    'competitors', 'researchers', 'publications', 'relationships'
+  ];
+
+  /**
+   * loadResult
+   * ---------------------------------------------------------------
+   * Read-only, defensive load + validation of AAWFIP_StrategicDatabase.
+   * Never throws. Returns one of:
+   *   { state: 'missing' }                     — key not present at all
+   *   { state: 'invalid', reason: string }      — present but not usable
+   *   { state: 'valid', db: object }            — parsed successfully
+   */
+  function loadResult() {
+    var raw = null;
+    try {
+      raw = window.localStorage.getItem(STRATEGIC_DB_STORAGE_KEY);
+    } catch (e) {
+      return { state: 'invalid', reason: 'Local storage could not be read in this browser (' + (e && e.message ? e.message : 'unknown error') + ').' };
+    }
+
+    if (raw === null) {
+      return { state: 'missing' };
+    }
+
+    var parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      return { state: 'invalid', reason: 'The stored value is not valid JSON, so it could not be parsed.' };
+    }
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { state: 'invalid', reason: 'The stored value is not a Strategic Database object.' };
+    }
+
+    return { state: 'valid', db: parsed };
+  }
+
+  function escapeHtml(str) {
+    return String(str == null ? '' : str).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function formatDate(iso) {
+    if (!iso) return 'Never';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return 'Unknown';
+    return d.toLocaleString(undefined, {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  }
+
+  function countOf(list) {
+    return Array.isArray(list) ? list.length : 0;
+  }
+
+  /**
+   * countUploadedDocuments
+   * ---------------------------------------------------------------
+   * Sums the length of each project's own `uploadedDocuments` array
+   * (a field already present on every project record — see AAWFIP's
+   * pjNormalizeProject). Nothing is invented: a project with no
+   * uploads, or a malformed/missing field, simply contributes 0.
+   */
+  function countUploadedDocuments(projects) {
+    if (!Array.isArray(projects)) return 0;
+    var total = 0;
+    projects.forEach(function (p) {
+      if (p && Array.isArray(p.uploadedDocuments)) total += p.uploadedDocuments.length;
+    });
+    return total;
+  }
+
+  // =================================================================
+  // Global Search
+  // -----------------------------------------------------------------
+  // Read-only, in-memory index built once from the already-loaded
+  // Strategic Database. Searches Projects, Organisations, Funders,
+  // Documents (each project's own uploadedDocuments array), and Notes
+  // (a top-level db.notes collection if one exists, plus any .notes
+  // field already attached to a project/organisation/funder record).
+  // Every field read here already exists on the record \u2014 nothing is
+  // invented, estimated, or written back anywhere.
+  // =================================================================
+
+  var SEARCH_CATEGORY_ORDER = ['Projects', 'Organisations', 'Funders', 'Documents', 'Notes'];
+  var SEARCH_MAX_PER_CATEGORY = 8;
+  var SEARCH_MIN_QUERY_LENGTH = 2;
+
+  function getField(obj, candidates) {
+    if (!obj || typeof obj !== 'object') return '';
+    for (var i = 0; i < candidates.length; i++) {
+      var v = obj[candidates[i]];
+      if (typeof v === 'string' && v.trim() !== '') return v.trim();
+    }
+    return '';
+  }
+
+  function escapeRegExp(str) {
+    return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function truncateAround(text, query, radius) {
+    text = String(text == null ? '' : text);
+    radius = radius || 60;
+    if (!query) {
+      return text.length > radius * 2 ? text.slice(0, radius * 2).trim() + '\u2026' : text;
+    }
+    var idx = text.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) {
+      return text.length > radius * 2 ? text.slice(0, radius * 2).trim() + '\u2026' : text;
+    }
+    var start = Math.max(0, idx - radius);
+    var end = Math.min(text.length, idx + query.length + radius);
+    var snippet = text.slice(start, end).trim();
+    return (start > 0 ? '\u2026' : '') + snippet + (end < text.length ? '\u2026' : '');
+  }
+
+  function highlight(text, query) {
+    var escaped = escapeHtml(text);
+    if (!query) return escaped;
+    var re = new RegExp('(' + escapeRegExp(escapeHtml(query)) + ')', 'ig');
+    return escaped.replace(re, '<mark>$1</mark>');
+  }
+
+  /**
+   * buildSearchIndex
+   * ---------------------------------------------------------------
+   * Flattens the validated database into a single array of
+   * { category, title, subtitle, body, searchText } records, one per
+   * searchable item. Read-only: nothing here mutates db.
+   */
+  function buildSearchIndex(db) {
+    var records = [];
+
+    (Array.isArray(db.projects) ? db.projects : []).forEach(function (p) {
+      var title = getField(p, ['name', 'title', 'projectName', 'projectTitle']) || 'Untitled project';
+      var subtitle = getField(p, ['status', 'stage', 'phase']);
+      var body = getField(p, ['description', 'summary', 'overview', 'details']);
+      records.push({
+        category: 'Projects', title: title, subtitle: subtitle, body: body,
+        searchText: [title, subtitle, body].join(' ').toLowerCase()
+      });
+    });
+
+    (Array.isArray(db.organisations) ? db.organisations : []).forEach(function (o) {
+      var title = getField(o, ['name', 'organisationName', 'orgName']) || 'Untitled organisation';
+      var subtitle = getField(o, ['type', 'sector', 'country', 'location']);
+      var body = getField(o, ['description', 'summary']);
+      records.push({
+        category: 'Organisations', title: title, subtitle: subtitle, body: body,
+        searchText: [title, subtitle, body].join(' ').toLowerCase()
+      });
+    });
+
+    (Array.isArray(db.funders) ? db.funders : []).forEach(function (f) {
+      var title = getField(f, ['name', 'funderName']) || 'Untitled funder';
+      var subtitle = getField(f, ['type', 'sector', 'country', 'region']);
+      var body = getField(f, ['description', 'summary']);
+      records.push({
+        category: 'Funders', title: title, subtitle: subtitle, body: body,
+        searchText: [title, subtitle, body].join(' ').toLowerCase()
+      });
+    });
+
+    // Documents \u2014 the same uploadedDocuments field countUploadedDocuments
+    // already reads, attributed back to its parent project.
+    (Array.isArray(db.projects) ? db.projects : []).forEach(function (p) {
+      var projectTitle = getField(p, ['name', 'title', 'projectName', 'projectTitle']) || 'Untitled project';
+      if (!Array.isArray(p.uploadedDocuments)) return;
+      p.uploadedDocuments.forEach(function (d) {
+        var title = getField(d, ['name', 'fileName', 'title', 'filename']) || 'Untitled document';
+        var body = getField(d, ['description', 'summary']);
+        records.push({
+          category: 'Documents', title: title, subtitle: 'From ' + projectTitle, body: body,
+          searchText: [title, projectTitle, body].join(' ').toLowerCase()
+        });
+      });
+    });
+
+    // Notes \u2014 a top-level db.notes collection (if AAWFIP has synced one)
+    // plus any .notes field already attached to a project, organisation,
+    // or funder record (either an array of note strings/objects, or a
+    // single note string).
+    function pushOneNote(note, parentLabel) {
+      var title, body;
+      if (typeof note === 'string') {
+        if (note.trim() === '') return;
+        title = truncateAround(note, '', 40);
+        body = note;
+      } else if (note && typeof note === 'object') {
+        body = getField(note, ['content', 'text', 'body']);
+        title = getField(note, ['title', 'subject']) || (body ? truncateAround(body, '', 40) : '');
+        if (!title) return;
+      } else {
+        return;
+      }
+      records.push({
+        category: 'Notes', title: title, subtitle: parentLabel ? 'On ' + parentLabel : '', body: body,
+        searchText: [title, body, parentLabel].join(' ').toLowerCase()
+      });
+    }
+
+    function pushNotesFrom(list, parentLabelFn) {
+      (Array.isArray(list) ? list : []).forEach(function (parent) {
+        var parentLabel = parentLabelFn(parent);
+        var n = parent && parent.notes;
+        if (Array.isArray(n)) {
+          n.forEach(function (note) { pushOneNote(note, parentLabel); });
+        } else if (typeof n === 'string') {
+          pushOneNote(n, parentLabel);
+        }
+      });
+    }
+
+    if (Array.isArray(db.notes)) {
+      db.notes.forEach(function (note) { pushOneNote(note, ''); });
+    }
+    pushNotesFrom(db.projects, function (p) { return getField(p, ['name', 'title', 'projectName', 'projectTitle']); });
+    pushNotesFrom(db.organisations, function (o) { return getField(o, ['name', 'organisationName', 'orgName']); });
+    pushNotesFrom(db.funders, function (f) { return getField(f, ['name', 'funderName']); });
+
+    return records;
+  }
+
+  /**
+   * runSearch
+   * ---------------------------------------------------------------
+   * Case-insensitive substring match against each record's combined
+   * searchText. category restricts matching to a single search
+   * category ('All' or omitted searches every category). Returns
+   * null if no category filter is active and the query is below the
+   * minimum length; otherwise an object keyed by category with
+   * matches (title matches sorted first). When a specific category
+   * filter is active, an empty query is allowed through so the chip
+   * can be used to simply browse everything in that category.
+   */
+  function runSearch(index, query, category) {
+    var cat = category || 'All';
+    var q = query.trim().toLowerCase();
+    if (cat === 'All' && q.length < SEARCH_MIN_QUERY_LENGTH) return null;
+
+    var grouped = {};
+    SEARCH_CATEGORY_ORDER.forEach(function (c) { grouped[c] = []; });
+
+    index.forEach(function (rec) {
+      if (cat !== 'All' && rec.category !== cat) return;
+      if (rec.searchText.indexOf(q) === -1) return;
+      grouped[rec.category].push({ rec: rec, titleMatch: rec.title.toLowerCase().indexOf(q) !== -1 });
+    });
+
+    SEARCH_CATEGORY_ORDER.forEach(function (c) {
+      grouped[c].sort(function (a, b) { return (b.titleMatch ? 1 : 0) - (a.titleMatch ? 1 : 0); });
+    });
+
+    return grouped;
+  }
+
+  function renderSearchResults(grouped, query, category) {
+    var container = document.getElementById('globalSearchResults');
+    if (!container) return;
+    var cat = category || 'All';
+
+    if (!grouped) {
+      container.innerHTML = '<div class="search-hint">Type at least ' + SEARCH_MIN_QUERY_LENGTH +
+        ' characters to search Projects, Organisations, Funders, Documents, and Notes \u2014 or pick a filter above to browse one category.</div>';
+      return;
+    }
+
+    var total = 0;
+    SEARCH_CATEGORY_ORDER.forEach(function (c) { total += grouped[c].length; });
+
+    if (total === 0) {
+      container.innerHTML = query.trim() === ''
+        ? '<div class="search-hint">No ' + escapeHtml(cat.toLowerCase()) + ' recorded in the Strategic Database yet.</div>'
+        : '<div class="search-hint">No matches for \u201c' + escapeHtml(query) + '\u201d' + (cat !== 'All' ? ' in ' + escapeHtml(cat.toLowerCase()) : '') + '.</div>';
+      return;
+    }
+
+    var html = '';
+    SEARCH_CATEGORY_ORDER.forEach(function (c) {
+      var items = grouped[c];
+      if (!items.length) return;
+      html += '<div class="search-group">' +
+        '<div class="search-group-label">' + escapeHtml(c) + ' <span class="search-group-count">' + items.length + '</span></div>' +
+        '<div class="search-group-items">';
+      items.slice(0, SEARCH_MAX_PER_CATEGORY).forEach(function (item) {
+        var rec = item.rec;
+        var snippetSource = item.titleMatch ? (rec.body || rec.subtitle || '') : (rec.body || rec.subtitle || '');
+        var snippet = snippetSource ? truncateAround(snippetSource, query, 55) : '';
+        html += '<div class="search-result">' +
+          '<div class="search-result-title">' + highlight(rec.title, query) + '</div>' +
+          (rec.subtitle ? '<div class="search-result-subtitle">' + escapeHtml(rec.subtitle) + '</div>' : '') +
+          (snippet ? '<div class="search-result-snippet">' + highlight(snippet, query) + '</div>' : '') +
+          '</div>';
+      });
+      if (items.length > SEARCH_MAX_PER_CATEGORY) {
+        html += '<div class="search-more">+' + (items.length - SEARCH_MAX_PER_CATEGORY) + ' more not shown</div>';
+      }
+      html += '</div></div>';
+    });
+
+    container.innerHTML = html;
+  }
+
+  // =================================================================
+  // Project Intelligence
+  // -----------------------------------------------------------------
+  // Per-project rollup: Overview, Funding opportunities, Collaborators,
+  // Risks, Strengths, Weaknesses, Missing information. Every field read
+  // here already exists on a record somewhere in the Strategic Database
+  // (the project itself, db.funders, db.fundingSchemes, db.organisations,
+  // or db.relationships) \u2014 nothing is invented. Risks/Strengths/
+  // Weaknesses are explicit, fixed rules evaluated against those real
+  // fields (documented inline below), not free-form generated text.
+  // Missing information is a literal audit of which core overview
+  // fields on the project's own record are blank.
+  // =================================================================
+
+  function getListField(obj, candidates) {
+    if (!obj || typeof obj !== 'object') return [];
+    for (var i = 0; i < candidates.length; i++) {
+      var v = obj[candidates[i]];
+      if (Array.isArray(v) && v.length) return v;
+    }
+    return [];
+  }
+
+  function uniqueStrings(arr) {
+    var seen = {};
+    var out = [];
+    arr.forEach(function (s) {
+      if (typeof s !== 'string') return;
+      var t = s.trim();
+      if (!t) return;
+      var key = t.toLowerCase();
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push(t);
+    });
+    return out;
+  }
+
+  // findByIdOrName is called from many places (relationship resolution,
+  // funder/collaborator name lookups, the ecosystem graph, project
+  // similarity pairing) — often once per project/organisation/relationship,
+  // which made the original linear scan an O(n) cost repeated O(n) times
+  // (effectively O(n^2)-O(n^3) once nested) on large Strategic Databases.
+  // ID_INDEX_CACHE keys each index by the *array reference itself*, so it
+  // stays correct across re-syncs for free: AAWFIP's sync always produces
+  // a brand-new parsed array, so a fresh sync naturally gets a fresh
+  // index rather than a stale one.
+  var ID_INDEX_CACHE = (typeof WeakMap !== 'undefined') ? new WeakMap() : null;
+  var ID_INDEX_FIELDS = ['id', '_id', 'name', 'funderName', 'organisationName'];
+
+  function buildIdIndex(list) {
+    var map = new Map();
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i];
+      if (!item || typeof item !== 'object') continue;
+      for (var j = 0; j < ID_INDEX_FIELDS.length; j++) {
+        var v = item[ID_INDEX_FIELDS[j]];
+        // First item in list order to claim a given key wins \u2014 matches
+        // the original scan's behaviour exactly (earliest item, any field).
+        if (v !== undefined && v !== null && !map.has(v)) map.set(v, item);
+      }
+    }
+    return map;
+  }
+
+  function findByIdOrName(list, key) {
+    if (!Array.isArray(list) || key == null) return null;
+    if (!ID_INDEX_CACHE || typeof Map === 'undefined') {
+      // Fallback for environments without WeakMap/Map: original linear scan.
+      for (var i = 0; i < list.length; i++) {
+        var item = list[i];
+        if (!item || typeof item !== 'object') continue;
+        if (item.id === key || item._id === key || item.name === key ||
+            item.funderName === key || item.organisationName === key) return item;
+      }
+      return null;
+    }
+    var idx = ID_INDEX_CACHE.get(list);
+    if (!idx) {
+      idx = buildIdIndex(list);
+      ID_INDEX_CACHE.set(list, idx);
+    }
+    return idx.get(key) || null;
+  }
+
+  function resolveFunderName(entry, db) {
+    if (typeof entry === 'string') {
+      var match = findByIdOrName(db.funders, entry) || findByIdOrName(db.fundingSchemes, entry);
+      return match ? (getField(match, ['name', 'funderName']) || entry) : entry;
+    }
+    if (entry && typeof entry === 'object') {
+      var direct = getField(entry, ['name', 'funderName', 'fundingSchemeName']);
+      if (direct) return direct;
+      if (entry.funderId != null) return resolveFunderName(entry.funderId, db);
+      if (entry.id != null) return resolveFunderName(entry.id, db);
+    }
+    return null;
+  }
+
+  function resolveCollaboratorName(entry, db) {
+    if (typeof entry === 'string') {
+      var match = findByIdOrName(db.organisations, entry);
+      return match ? (getField(match, ['name', 'organisationName', 'orgName']) || entry) : entry;
+    }
+    if (entry && typeof entry === 'object') {
+      var direct = getField(entry, ['name', 'organisationName', 'orgName']);
+      if (direct) return direct;
+      if (entry.organisationId != null) return resolveCollaboratorName(entry.organisationId, db);
+      if (entry.id != null) return resolveCollaboratorName(entry.id, db);
+    }
+    return null;
+  }
+
+  /**
+   * resolveEntityLabel
+   * ---------------------------------------------------------------
+   * Best-effort display name for a relationship endpoint that's just
+   * an id/string: checks organisations, funders, projects, and
+   * researchers (the collections we know exist) and falls back to
+   * the raw value if none match.
+   */
+  function resolveEntityLabel(value, db) {
+    if (typeof value !== 'string') return '';
+    var collections = [db.organisations, db.funders, db.projects, db.researchers];
+    for (var i = 0; i < collections.length; i++) {
+      var match = findByIdOrName(collections[i], value);
+      if (match) return getField(match, ['name', 'title', 'organisationName', 'orgName', 'funderName', 'projectName']) || value;
+    }
+    return value;
+  }
+
+  /**
+   * relationshipsForEntity
+   * ---------------------------------------------------------------
+   * Reads db.relationships (if present) for entries where either side
+   * refers to this entity (by id or by matching its title), returning
+   * { type, counterpart } pairs \u2014 the relationship's own type field
+   * plus the other side's resolved name. Silently contributes nothing
+   * if the collection or the expected fields aren't there.
+   *
+   * This is called once per project (Project Intelligence) and up to
+   * twice per organisation (Organisation Intelligence), so a naive
+   * linear scan over db.relationships repeats O(relationships) work
+   * O(projects + organisations) times \u2014 effectively O(n^2) on a
+   * large Strategic Database. REL_INDEX_CACHE builds one lookup table
+   * from db.relationships (keyed by the array reference itself, same
+   * approach as ID_INDEX_CACHE) so every relationship is inspected
+   * exactly once no matter how many entities query it.
+   */
+  var REL_INDEX_CACHE = (typeof WeakMap !== 'undefined') ? new WeakMap() : null;
+
+  function relationshipsForEntityLinear(db, entity, entityTitle) {
+    var out = [];
+    if (!Array.isArray(db.relationships)) return out;
+    var entityId = entity.id != null ? entity.id : entity._id;
+    db.relationships.forEach(function (rel) {
+      if (!rel || typeof rel !== 'object') return;
+      var type = getField(rel, ['type', 'relationshipType', 'category']) || 'Relationship';
+      var a = rel.source != null ? rel.source : (rel.from != null ? rel.from : rel.sourceId);
+      var b = rel.target != null ? rel.target : (rel.to != null ? rel.to : rel.targetId);
+      var aName = getField(rel, ['sourceName', 'fromName']) || resolveEntityLabel(a, db);
+      var bName = getField(rel, ['targetName', 'toName']) || resolveEntityLabel(b, db);
+      var isA = (entityId != null && a === entityId) ||
+        (!!aName && aName.toLowerCase() === String(entityTitle).toLowerCase());
+      var isB = (entityId != null && b === entityId) ||
+        (!!bName && bName.toLowerCase() === String(entityTitle).toLowerCase());
+      if (isA && bName) out.push({ type: type, counterpart: bName });
+      else if (isB && aName) out.push({ type: type, counterpart: aName });
+    });
+    return out;
+  }
+
+  // Builds a Map from every id/lowercased-name a relationship side is
+  // known by \u2192 the list of { relIndex, type, counterpart } entries
+  // that side contributes. Side A is only indexed as "isA" and side B
+  // only as "isB", mirroring the if/else-if precedence of the original
+  // linear scan so a self-referential relationship (a === b) still
+  // resolves the same way.
+  function buildRelationshipIndex(db) {
+    var index = new Map();
+    function addTo(key, entry) {
+      if (key == null) return;
+      var list = index.get(key);
+      if (!list) { list = []; index.set(key, list); }
+      list.push(entry);
+    }
+    var rels = Array.isArray(db.relationships) ? db.relationships : [];
+    rels.forEach(function (rel, i) {
+      if (!rel || typeof rel !== 'object') return;
+      var type = getField(rel, ['type', 'relationshipType', 'category']) || 'Relationship';
+      var a = rel.source != null ? rel.source : (rel.from != null ? rel.from : rel.sourceId);
+      var b = rel.target != null ? rel.target : (rel.to != null ? rel.to : rel.targetId);
+      var aName = getField(rel, ['sourceName', 'fromName']) || resolveEntityLabel(a, db);
+      var bName = getField(rel, ['targetName', 'toName']) || resolveEntityLabel(b, db);
+      if (bName) {
+        var entryForA = { relIndex: i, side: 'A', type: type, counterpart: bName };
+        if (a != null) addTo(a, entryForA);
+        if (aName) addTo(String(aName).toLowerCase(), entryForA);
+      }
+      if (aName) {
+        var entryForB = { relIndex: i, side: 'B', type: type, counterpart: aName };
+        if (b != null) addTo(b, entryForB);
+        if (bName) addTo(String(bName).toLowerCase(), entryForB);
+      }
+    });
+    return index;
+  }
+
+  function relationshipsForEntity(db, entity, entityTitle) {
+    var rels = db.relationships;
+    if (!Array.isArray(rels) || !rels.length) return [];
+    if (!REL_INDEX_CACHE || typeof Map === 'undefined') {
+      return relationshipsForEntityLinear(db, entity, entityTitle);
+    }
+    var idx = REL_INDEX_CACHE.get(rels);
+    if (!idx) {
+      idx = buildRelationshipIndex(db);
+      REL_INDEX_CACHE.set(rels, idx);
+    }
+    var entityId = entity.id != null ? entity.id : entity._id;
+    var matches = [];
+    if (entityId != null) {
+      var byId = idx.get(entityId);
+      if (byId) matches = matches.concat(byId);
+    }
+    if (entityTitle != null) {
+      var byName = idx.get(String(entityTitle).toLowerCase());
+      if (byName) matches = matches.concat(byName);
+    }
+    if (!matches.length) return [];
+    // Restore original db.relationships order and drop any entry that
+    // matched this entity on both id and name (isA/isB precedence in
+    // the linear scan only ever contributes one entry per relationship).
+    // A relationship can appear in `matches` via its A-side entry, its
+    // B-side entry, or both (e.g. entity matches side A by name and
+    // side B by id at once) — when both are present for the same
+    // relIndex, the linear scan's "if (isA...) else if (isB...)"
+    // always resolves it as an A-side match, so the side-A entry must
+    // win here too, regardless of which lookup (id vs name) happened
+    // to produce it first.
+    matches.sort(function (x, y) { return x.relIndex - y.relIndex; });
+    var bestByRel = {};
+    matches.forEach(function (m) {
+      var existing = bestByRel[m.relIndex];
+      if (!existing || (existing.side === 'B' && m.side === 'A')) {
+        bestByRel[m.relIndex] = m;
+      }
+    });
+    var relIndices = Object.keys(bestByRel).map(Number).sort(function (x, y) { return x - y; });
+    var out = relIndices.map(function (idx) {
+      var m = bestByRel[idx];
+      return { type: m.type, counterpart: m.counterpart };
+    });
+    return out;
+  }
+
+  /**
+   * relationshipCollaborators
+   * ---------------------------------------------------------------
+   * Thin wrapper over relationshipsForEntity: just the entries whose
+   * type looks like a collaboration, returned as plain names.
+   */
+  function relationshipCollaborators(db, project, projectTitle) {
+    return uniqueStrings(
+      relationshipsForEntity(db, project, projectTitle)
+        .filter(function (r) { return /collab/i.test(r.type); })
+        .map(function (r) { return r.counterpart; })
+    );
+  }
+
+  function buildProjectIntelligence(db) {
+    var projects = Array.isArray(db.projects) ? db.projects : [];
+    return projects.map(function (p) {
+      var title = getField(p, ['name', 'title', 'projectName', 'projectTitle']) || 'Untitled project';
+      var status = getField(p, ['status', 'stage', 'phase']);
+      var category = getField(p, ['category', 'focusArea', 'theme']);
+      var description = getField(p, ['description', 'summary', 'overview', 'details']);
+      var budget = getField(p, ['budget', 'fundingRequested', 'fundingTarget', 'budgetAmount']);
+      if (!budget && typeof p.budget === 'number') budget = String(p.budget);
+      if (!budget && typeof p.fundingRequested === 'number') budget = String(p.fundingRequested);
+      if (!budget && typeof p.fundingTarget === 'number') budget = String(p.fundingTarget);
+      var timeline = getField(p, ['timeline', 'startDate', 'projectTimeline']);
+
+      var fundingRaw = getListField(p, ['matchedFunders', 'fundingOpportunities', 'targetFunders', 'funders']);
+      var fundingNames = uniqueStrings(fundingRaw.map(function (entry) { return resolveFunderName(entry, db); }).filter(Boolean));
+
+      var collaboratorsRaw = getListField(p, ['collaborators', 'partners', 'team', 'collaboratingOrganisations']);
+      var collaboratorNames = uniqueStrings(collaboratorsRaw.map(function (entry) { return resolveCollaboratorName(entry, db); }).filter(Boolean));
+      collaboratorNames = uniqueStrings(collaboratorNames.concat(relationshipCollaborators(db, p, title)));
+
+      var docCount = Array.isArray(p.uploadedDocuments) ? p.uploadedDocuments.length : 0;
+
+      var risks = [];
+      var strengths = [];
+      var weaknesses = [];
+      var missing = [];
+
+      // Risks: time-sensitive or existential threats to the project.
+      if (fundingNames.length === 0) {
+        risks.push('No funding opportunities currently matched \u2014 no active funding pathway.');
+      }
+      var deadlineRaw = getField(p, ['deadline', 'applicationDeadline', 'dueDate']);
+      if (deadlineRaw) {
+        var dDate = new Date(deadlineRaw);
+        if (!isNaN(dDate.getTime()) && dDate.getTime() < Date.now() && !/fund|complete|closed|awarded/i.test(status)) {
+          risks.push('Recorded deadline (' + formatDate(deadlineRaw) + ') has passed.');
+        }
+      }
+
+      // Strengths: healthy counts already present on the record.
+      if (fundingNames.length >= 2) {
+        strengths.push(fundingNames.length + ' funding opportunities matched \u2014 diversified funding pipeline.');
+      }
+      if (collaboratorNames.length >= 2) {
+        strengths.push(collaboratorNames.length + ' collaborating organisations recorded.');
+      }
+      if (docCount >= 1) {
+        strengths.push(docCount + ' supporting document' + (docCount === 1 ? '' : 's') + ' on file.');
+      }
+
+      // Weaknesses: internal shortfalls (not time-sensitive).
+      if (fundingNames.length === 1) {
+        weaknesses.push('Only one funding opportunity matched \u2014 limited diversification.');
+      }
+      if (collaboratorNames.length === 0) {
+        weaknesses.push('No collaborating organisations recorded.');
+      }
+      if (docCount === 0) {
+        weaknesses.push('No supporting documents uploaded.');
+      }
+
+      // Missing information: literal gaps in the project's own overview fields.
+      if (!description) missing.push('No description recorded.');
+      if (!status) missing.push('No status recorded.');
+      if (!budget) missing.push('No budget or funding target recorded.');
+      if (!timeline) missing.push('No timeline recorded.');
+      if (!category) missing.push('No category or focus area recorded.');
+
+      return {
+        title: title, status: status, category: category, description: description,
+        budget: budget, timeline: timeline,
+        fundingNames: fundingNames, collaboratorNames: collaboratorNames,
+        risks: risks, strengths: strengths, weaknesses: weaknesses, missing: missing
+      };
+    });
+  }
+
+  function renderOverviewBlock(pi) {
+    var rows = [
+      ['Category', pi.category],
+      ['Budget', pi.budget],
+      ['Timeline', pi.timeline]
+    ];
+    var rowsHtml = rows.map(function (r) {
+      return '<div class="row"><span class="k">' + escapeHtml(r[0]) + '</span><span class="v">' +
+        (r[1] ? escapeHtml(r[1]) : '<em>Not recorded</em>') + '</span></div>';
+    }).join('');
+    var descHtml = pi.description ?
+      '<p>' + escapeHtml(truncateAround(pi.description, '', 140)) + '</p>' :
+      '<p><em>No description recorded.</em></p>';
+    return '<div class="intel-block"><div class="label">Overview</div><div class="overview-fields">' +
+      rowsHtml + '</div>' + descHtml + '</div>';
+  }
+
+  function renderListBlock(label, items, emptyText, extraClass) {
+    var cls = 'intel-block' + (extraClass ? ' ' + extraClass : '') + (items.length ? '' : ' empty');
+    var body = items.length ?
+      '<ul>' + items.map(function (i) { return '<li>' + escapeHtml(i) + '</li>'; }).join('') + '</ul>' :
+      '<div class="empty-note">' + escapeHtml(emptyText) + '</div>';
+    return '<div class="' + cls + '"><div class="label">' + escapeHtml(label) + '</div>' + body + '</div>';
+  }
+
+  function renderProjectIntelligence(list) {
+    if (!list.length) {
+      return '<div class="empty-state" style="padding:24px 0;"><p>No projects recorded in the Strategic Database yet.</p></div>';
+    }
+    return list.map(function (pi) {
+      return '<div class="project-card">' +
+        '<div class="project-card-header"><h3>' + escapeHtml(pi.title) + '</h3>' +
+        (pi.status ? '<span class="project-status-pill">' + escapeHtml(pi.status) + '</span>' : '') +
+        '</div>' +
+        '<div class="intel-grid">' +
+        renderOverviewBlock(pi) +
+        renderListBlock('Funding opportunities', pi.fundingNames, 'No funding opportunities recorded for this project yet.') +
+        renderListBlock('Collaborators', pi.collaboratorNames, 'No collaborating organisations recorded.') +
+        renderListBlock('Risks', pi.risks, 'No risks identified from available data.', 'risks') +
+        renderListBlock('Strengths', pi.strengths, 'No strengths identified from available data.', 'strengths') +
+        renderListBlock('Weaknesses', pi.weaknesses, 'No weaknesses identified from available data.', 'weaknesses') +
+        renderListBlock('Missing information', pi.missing, 'Record is complete across the core fields tracked here.', 'missing') +
+        '</div></div>';
+    }).join('');
+  }
+
+  // =================================================================
+  // Organisation Intelligence
+  // -----------------------------------------------------------------
+  // Per-organisation profile: Relationships, Active projects, Previous
+  // funders, Researchers, Partners. Same standard as Project
+  // Intelligence \u2014 every value comes from a field that already exists
+  // somewhere in the Strategic Database (the organisation's own
+  // record, db.relationships, db.projects, db.funders, or
+  // db.researchers); nothing is invented.
+  // =================================================================
+
+  /**
+   * activeProjectsForOrg
+   * ---------------------------------------------------------------
+   * Projects linked to this organisation \u2014 either directly (the
+   * project's own organisation/leadOrganisation field) or as a listed
+   * collaborator/partner \u2014 excluding projects whose own status marks
+   * them complete/closed/archived. A project with no status at all is
+   * treated as active (nothing there says otherwise).
+   */
+  // activeProjectsForOrg is called once per organisation, and used to
+  // rescan every project each time \u2014 O(organisations x projects) on
+  // a large Strategic Database. ORG_PROJECT_INDEX_CACHE instead walks
+  // db.projects exactly once, filing every non-completed project under
+  // every id/name key that could link an org to it (leadOrganisation,
+  // collaborators, etc.), so each org lookup afterwards is O(1)-ish
+  // (bounded by how many projects actually link to that one org).
+  var ORG_PROJECT_INDEX_CACHE = (typeof WeakMap !== 'undefined') ? new WeakMap() : null;
+
+  function buildOrgProjectIndex(db) {
+    var index = new Map();
+    function addTo(key, entry) {
+      if (key == null) return;
+      var list = index.get(key);
+      if (!list) { list = []; index.set(key, list); }
+      list.push(entry);
+    }
+    var projects = Array.isArray(db.projects) ? db.projects : [];
+    projects.forEach(function (p) {
+      var status = getField(p, ['status', 'stage', 'phase']);
+      if (/complete|closed|finished|archived|cancelled|canceled/i.test(status)) return;
+      var title = getField(p, ['name', 'title', 'projectName', 'projectTitle']) || 'Untitled project';
+      var entry = { title: title, status: status };
+      var seenKeys = {};
+      [p.organisation, p.leadOrganisation, p.organisationId, p.orgId].forEach(function (v) {
+        if (v == null) return;
+        var key = typeof v === 'string' ? v.toLowerCase() : v;
+        if (seenKeys[key]) return;
+        seenKeys[key] = true;
+        addTo(v, entry);
+        if (typeof v === 'string') addTo(v.toLowerCase(), entry);
+      });
+      getListField(p, ['collaborators', 'partners', 'collaboratingOrganisations']).forEach(function (v) {
+        if (typeof v === 'string') {
+          var key = v.toLowerCase();
+          if (!seenKeys[key]) { seenKeys[key] = true; addTo(v, entry); addTo(key, entry); }
+          return;
+        }
+        var name = resolveCollaboratorName(v, db);
+        if (name) {
+          var nkey = name.toLowerCase();
+          if (!seenKeys[nkey]) { seenKeys[nkey] = true; addTo(nkey, entry); }
+        }
+      });
+    });
+    return index;
+  }
+
+  function activeProjectsForOrg(db, org, orgTitle) {
+    var projects = db.projects;
+    if (!Array.isArray(projects) || !projects.length) return [];
+    if (!ORG_PROJECT_INDEX_CACHE || typeof Map === 'undefined') {
+      return activeProjectsForOrgLinear(db, org, orgTitle);
+    }
+    var idx = ORG_PROJECT_INDEX_CACHE.get(projects);
+    if (!idx) { idx = buildOrgProjectIndex(db); ORG_PROJECT_INDEX_CACHE.set(projects, idx); }
+    var orgId = org.id != null ? org.id : org._id;
+    var seen = new Set();
+    var out = [];
+    function addAll(list) {
+      if (!list) return;
+      list.forEach(function (entry) {
+        if (seen.has(entry)) return;
+        seen.add(entry);
+        out.push(entry);
+      });
+    }
+    if (orgId != null) addAll(idx.get(orgId));
+    if (orgTitle != null) addAll(idx.get(String(orgTitle).toLowerCase()));
+    return out;
+  }
+
+  function activeProjectsForOrgLinear(db, org, orgTitle) {
+    var orgId = org.id != null ? org.id : org._id;
+    var out = [];
+    (Array.isArray(db.projects) ? db.projects : []).forEach(function (p) {
+      var linked = false;
+      [p.organisation, p.leadOrganisation, p.organisationId, p.orgId].forEach(function (v) {
+        if (linked || v == null) return;
+        if (orgId != null && v === orgId) linked = true;
+        else if (typeof v === 'string' && v.toLowerCase() === String(orgTitle).toLowerCase()) linked = true;
+      });
+      if (!linked) {
+        getListField(p, ['collaborators', 'partners', 'collaboratingOrganisations']).forEach(function (entry) {
+          if (linked) return;
+          if (typeof entry === 'string' && orgId != null && entry === orgId) { linked = true; return; }
+          var name = resolveCollaboratorName(entry, db);
+          if (name && name.toLowerCase() === String(orgTitle).toLowerCase()) linked = true;
+        });
+      }
+      if (!linked) return;
+      var status = getField(p, ['status', 'stage', 'phase']);
+      if (/complete|closed|finished|archived|cancelled|canceled/i.test(status)) return;
+      var title = getField(p, ['name', 'title', 'projectName', 'projectTitle']) || 'Untitled project';
+      out.push({ title: title, status: status });
+    });
+    return out;
+  }
+
+  function previousFundersForOrg(db, org) {
+    var raw = getListField(org, ['previousFunders', 'pastFunders', 'fundingHistory', 'fundersHistory']);
+    return uniqueStrings(raw.map(function (entry) { return resolveFunderName(entry, db); }).filter(Boolean));
+  }
+
+  /**
+   * researchersForOrg
+   * ---------------------------------------------------------------
+   * Combines the organisation's own researchers field (if any) with
+   * any db.researchers record whose own affiliation field points back
+   * to this organisation.
+   */
+  // Same O(organisations x researchers) issue as activeProjectsForOrg,
+  // fixed the same way: index db.researchers by affiliation id/name
+  // once, then each org does an O(1)-ish lookup.
+  var ORG_RESEARCHER_INDEX_CACHE = (typeof WeakMap !== 'undefined') ? new WeakMap() : null;
+
+  function buildOrgResearcherIndex(db) {
+    var index = new Map();
+    function addTo(key, name) {
+      if (key == null || !name) return;
+      var list = index.get(key);
+      if (!list) { list = []; index.set(key, list); }
+      list.push(name);
+    }
+    (Array.isArray(db.researchers) ? db.researchers : []).forEach(function (r) {
+      var aff = r.organisation != null ? r.organisation : (r.organisationId != null ? r.organisationId : r.affiliation);
+      if (aff == null) return;
+      var name = getField(r, ['name', 'fullName']);
+      if (!name) return;
+      addTo(aff, name);
+      if (typeof aff === 'string') addTo(aff.toLowerCase(), name);
+    });
+    return index;
+  }
+
+  function researchersForOrg(db, org, orgTitle) {
+    var orgId = org.id != null ? org.id : org._id;
+    var names = [];
+    getListField(org, ['researchers', 'affiliatedResearchers']).forEach(function (entry) {
+      if (typeof entry === 'string') {
+        var match = findByIdOrName(db.researchers, entry);
+        names.push(match ? (getField(match, ['name', 'fullName']) || entry) : entry);
+      } else if (entry && typeof entry === 'object') {
+        var direct = getField(entry, ['name', 'fullName']);
+        if (direct) names.push(direct);
+      }
+    });
+    var researchers = db.researchers;
+    if (Array.isArray(researchers) && researchers.length) {
+      if (!ORG_RESEARCHER_INDEX_CACHE || typeof Map === 'undefined') {
+        (researchers).forEach(function (r) {
+          var aff = r.organisation != null ? r.organisation : (r.organisationId != null ? r.organisationId : r.affiliation);
+          var matches = false;
+          if (aff != null) {
+            if (orgId != null && aff === orgId) matches = true;
+            else if (typeof aff === 'string' && aff.toLowerCase() === String(orgTitle).toLowerCase()) matches = true;
+          }
+          if (matches) {
+            var name = getField(r, ['name', 'fullName']);
+            if (name) names.push(name);
+          }
+        });
+      } else {
+        var idx = ORG_RESEARCHER_INDEX_CACHE.get(researchers);
+        if (!idx) { idx = buildOrgResearcherIndex(db); ORG_RESEARCHER_INDEX_CACHE.set(researchers, idx); }
+        if (orgId != null) {
+          var byId = idx.get(orgId);
+          if (byId) names = names.concat(byId);
+        }
+        if (orgTitle != null) {
+          var byName = idx.get(String(orgTitle).toLowerCase());
+          if (byName) names = names.concat(byName);
+        }
+      }
+    }
+    return uniqueStrings(names);
+  }
+
+  /**
+   * partnersForOrg
+   * ---------------------------------------------------------------
+   * Prefers the organisation's own partners field; if there isn't
+   * one, falls back to db.relationships entries tagged Partnership or
+   * Collaborator that name another organisation.
+   */
+  function partnersForOrg(db, org, orgTitle) {
+    var direct = uniqueStrings(
+      getListField(org, ['partners', 'partnerOrganisations'])
+        .map(function (entry) { return resolveCollaboratorName(entry, db); })
+        .filter(Boolean)
+    );
+    if (direct.length) return direct;
+    return uniqueStrings(
+      relationshipsForEntity(db, org, orgTitle)
+        .filter(function (r) { return /partner|collab/i.test(r.type); })
+        .map(function (r) { return r.counterpart; })
+    );
+  }
+
+  function buildOrganisationIntelligence(db) {
+    var orgs = Array.isArray(db.organisations) ? db.organisations : [];
+    return orgs.map(function (o) {
+      var title = getField(o, ['name', 'organisationName', 'orgName']) || 'Untitled organisation';
+      var type = getField(o, ['type', 'sector', 'category']);
+      var location = getField(o, ['country', 'location', 'region']);
+      return {
+        title: title, type: type, location: location,
+        relationships: relationshipsForEntity(db, o, title),
+        activeProjects: activeProjectsForOrg(db, o, title),
+        previousFunders: previousFundersForOrg(db, o),
+        researchers: researchersForOrg(db, o, title),
+        partners: partnersForOrg(db, o, title)
+      };
+    });
+  }
+
+  function renderOrgRelationshipsBlock(items) {
+    var strs = items.map(function (r) { return r.type + ' \u2014 ' + r.counterpart; });
+    return renderListBlock('Relationships', strs, 'No relationships recorded for this organisation.');
+  }
+
+  function renderOrgProjectsBlock(items) {
+    var strs = items.map(function (p) { return p.title + (p.status ? ' (' + p.status + ')' : ''); });
+    return renderListBlock('Active projects', strs, 'No active projects recorded for this organisation.');
+  }
+
+  function renderOrganisationIntelligence(list) {
+    if (!list.length) {
+      return '<div class="empty-state" style="padding:24px 0;"><p>No organisations recorded in the Strategic Database yet.</p></div>';
+    }
+    return list.map(function (oi) {
+      return '<div class="project-card">' +
+        '<div class="project-card-header"><h3>' + escapeHtml(oi.title) + '</h3>' +
+        (oi.type ? '<span class="project-status-pill">' + escapeHtml(oi.type) + '</span>' : '') +
+        (oi.location ? '<span class="project-status-pill">' + escapeHtml(oi.location) + '</span>' : '') +
+        '</div>' +
+        '<div class="intel-grid">' +
+        renderOrgRelationshipsBlock(oi.relationships) +
+        renderOrgProjectsBlock(oi.activeProjects) +
+        renderListBlock('Previous funders', oi.previousFunders, 'No previous funders recorded for this organisation.') +
+        renderListBlock('Researchers', oi.researchers, 'No researchers recorded for this organisation.') +
+        renderListBlock('Partners', oi.partners, 'No partner organisations recorded.') +
+        '</div></div>';
+    }).join('');
+  }
+
+  // =================================================================
+  // Ecosystem Mapping
+  // -----------------------------------------------------------------
+  // A read-only, interactive relationship graph across Projects,
+  // Organisations, Researchers, Universities, NGOs, Funders and
+  // Governments. Same standard as the rest of SIE: every node and
+  // edge comes from a field that already exists somewhere in the
+  // Strategic Database \u2014 nothing is invented.
+  //
+  // Universities / NGOs / Governments are not separate top-level
+  // collections in the schema; they are organisations whose own
+  // type/sector/category field identifies them as such, so they are
+  // classified (not fabricated) out of db.organisations.
+  //
+  // Edges are drawn from db.relationships plus the same linking
+  // fields Project Intelligence and Organisation Intelligence already
+  // read (lead/collaborating organisations, matched funders,
+  // affiliated researchers, partners, previous funders) \u2014 reusing
+  // the existing resolver helpers so a link only appears here if it
+  // would also have appeared in one of those sections.
+  // =================================================================
+
+  function classifyOrganisation(o) {
+    var type = getField(o, ['type', 'sector', 'category']);
+    var t = type.toLowerCase();
+    if (/university|college|academ/.test(t)) return 'university';
+    if (/\bngo\b|non-?profit|non-?governmental|charity|charitable|foundation/.test(t)) return 'ngo';
+    if (/government|ministry|\bgov\b|department|public sector|\bstate\b|municipal|federal/.test(t)) return 'government';
+    return 'organisation';
+  }
+
+  function buildEcosystemGraph(db) {
+    var nodes = [];
+    var nodeIndex = {};
+    var titleIndex = {};
+
+    function addNode(kind, title, idHint) {
+      title = title && String(title).trim();
+      if (!title) return null;
+      var id = kind + ':' + (idHint != null ? idHint : title.toLowerCase());
+      if (nodeIndex[id]) return nodeIndex[id];
+      var node = { id: id, label: title, kind: kind, degree: 0 };
+      nodes.push(node);
+      nodeIndex[id] = node;
+      var tKey = title.toLowerCase();
+      if (!(tKey in titleIndex)) titleIndex[tKey] = id;
+      return node;
+    }
+
+    (Array.isArray(db.projects) ? db.projects : []).forEach(function (p) {
+      var title = getField(p, ['name', 'title', 'projectName', 'projectTitle']) || 'Untitled project';
+      addNode('project', title, p.id != null ? p.id : p._id);
+    });
+    (Array.isArray(db.organisations) ? db.organisations : []).forEach(function (o) {
+      var title = getField(o, ['name', 'organisationName', 'orgName']) || 'Untitled organisation';
+      addNode(classifyOrganisation(o), title, o.id != null ? o.id : o._id);
+    });
+    (Array.isArray(db.funders) ? db.funders : []).forEach(function (f) {
+      var title = getField(f, ['name', 'funderName']) || 'Untitled funder';
+      addNode('funder', title, f.id != null ? f.id : f._id);
+    });
+    (Array.isArray(db.researchers) ? db.researchers : []).forEach(function (r) {
+      var title = getField(r, ['name', 'fullName']) || 'Untitled researcher';
+      addNode('researcher', title, r.id != null ? r.id : r._id);
+    });
+
+    var edges = [];
+    var edgeSeen = {};
+    function addEdge(aTitle, bTitle, label) {
+      if (!aTitle || !bTitle) return;
+      var aId = titleIndex[String(aTitle).toLowerCase()];
+      var bId = titleIndex[String(bTitle).toLowerCase()];
+      if (!aId || !bId || aId === bId) return;
+      var key = [aId, bId].sort().join('|') + '|' + label;
+      if (edgeSeen[key]) return;
+      edgeSeen[key] = true;
+      edges.push({ source: aId, target: bId, label: label });
+      nodeIndex[aId].degree++;
+      nodeIndex[bId].degree++;
+    }
+    function orgNameFor(v) {
+      if (typeof v === 'string') {
+        var match = findByIdOrName(db.organisations, v);
+        return match ? (getField(match, ['name', 'organisationName', 'orgName']) || v) : v;
+      }
+      return resolveCollaboratorName(v, db);
+    }
+
+    (Array.isArray(db.relationships) ? db.relationships : []).forEach(function (rel) {
+      if (!rel || typeof rel !== 'object') return;
+      var type = getField(rel, ['type', 'relationshipType', 'category']) || 'Relationship';
+      var a = rel.source != null ? rel.source : (rel.from != null ? rel.from : rel.sourceId);
+      var b = rel.target != null ? rel.target : (rel.to != null ? rel.to : rel.targetId);
+      var aName = getField(rel, ['sourceName', 'fromName']) || resolveEntityLabel(a, db);
+      var bName = getField(rel, ['targetName', 'toName']) || resolveEntityLabel(b, db);
+      addEdge(aName, bName, type);
+    });
+
+    (Array.isArray(db.projects) ? db.projects : []).forEach(function (p) {
+      var pTitle = getField(p, ['name', 'title', 'projectName', 'projectTitle']) || 'Untitled project';
+      [p.organisation, p.leadOrganisation, p.organisationId, p.orgId].forEach(function (v) {
+        if (v == null) return;
+        addEdge(pTitle, orgNameFor(v), 'Lead organisation');
+      });
+      getListField(p, ['collaborators', 'partners', 'collaboratingOrganisations', 'team']).forEach(function (entry) {
+        addEdge(pTitle, resolveCollaboratorName(entry, db), 'Collaborator');
+      });
+      getListField(p, ['matchedFunders', 'fundingOpportunities', 'targetFunders', 'funders']).forEach(function (entry) {
+        addEdge(pTitle, resolveFunderName(entry, db), 'Funding');
+      });
+    });
+
+    (Array.isArray(db.organisations) ? db.organisations : []).forEach(function (o) {
+      var oTitle = getField(o, ['name', 'organisationName', 'orgName']) || 'Untitled organisation';
+      getListField(o, ['researchers', 'affiliatedResearchers']).forEach(function (entry) {
+        var name = null;
+        if (typeof entry === 'string') {
+          var match = findByIdOrName(db.researchers, entry);
+          name = match ? (getField(match, ['name', 'fullName']) || entry) : entry;
+        } else if (entry && typeof entry === 'object') {
+          name = getField(entry, ['name', 'fullName']);
+        }
+        addEdge(oTitle, name, 'Researcher');
+      });
+      getListField(o, ['partners', 'partnerOrganisations']).forEach(function (entry) {
+        addEdge(oTitle, resolveCollaboratorName(entry, db), 'Partnership');
+      });
+      getListField(o, ['previousFunders', 'pastFunders', 'fundingHistory', 'fundersHistory']).forEach(function (entry) {
+        addEdge(oTitle, resolveFunderName(entry, db), 'Previous funder');
+      });
+    });
+
+    (Array.isArray(db.researchers) ? db.researchers : []).forEach(function (r) {
+      var rTitle = getField(r, ['name', 'fullName']) || 'Untitled researcher';
+      var aff = r.organisation != null ? r.organisation : (r.organisationId != null ? r.organisationId : r.affiliation);
+      if (aff != null) addEdge(rTitle, orgNameFor(aff), 'Affiliation');
+    });
+
+    return { nodes: nodes, edges: edges };
+  }
+
+  /**
+   * layoutGraph
+   * ---------------------------------------------------------------
+   * A small, dependency-free Fruchterman-Reingold force layout, run
+   * synchronously to produce a stable starting arrangement. Positions
+   * are then editable by the user via drag, so this only needs to run
+   * once per render \u2014 but the repulsion pass is O(nodes^2) per
+   * iteration, so on a large ecosystem graph (many hundreds of
+   * projects/organisations/funders/researchers) that cost multiplies
+   * fast. Three changes keep it fast without changing the resulting
+   * layout in any way a user would notice:
+   *   1. The hot O(n^2) loop uses plain indexed for-loops and hoists
+   *      per-node reads/writes instead of nodes.forEach()/closures,
+   *      and k*k is computed once instead of once per pair per
+   *      iteration.
+   *   2. Iteration count scales down as the node count grows \u2014 a
+   *      dense graph needs far fewer full passes to reach a
+   *      reasonable arrangement than a small one, since there's more
+   *      averaging-out happening per step.
+   *   3. Iteration stops early once the layout has settled (average
+   *      per-node displacement stays below a small threshold for a
+   *      few iterations in a row), since further iterations at that
+   *      point don't move anything a visible amount.
+   */
+  function pickLayoutIterations(n) {
+    if (n <= 120) return 220;
+    if (n <= 300) return 160;
+    if (n <= 700) return 100;
+    if (n <= 1500) return 60;
+    return 36;
+  }
+
+  function layoutGraph(nodes, edges, nodeById, width, height) {
+    var n = nodes.length;
+    if (!n) return;
+    var k = Math.sqrt((width * height) / n) * 0.9;
+    var k2 = k * k;
+
+    for (var i0 = 0; i0 < n; i0++) {
+      var node = nodes[i0];
+      var angle = (i0 / n) * Math.PI * 2;
+      var r = Math.min(width, height) * 0.35;
+      node.x = width / 2 + r * Math.cos(angle) + (Math.random() - 0.5) * 10;
+      node.y = height / 2 + r * Math.sin(angle) + (Math.random() - 0.5) * 10;
+    }
+
+    // Resolve edge endpoints once, up front, instead of looking them
+    // up in nodeById on every one of the (up to 220) iterations.
+    var eSrc = [], eTgt = [];
+    for (var e = 0; e < edges.length; e++) {
+      var ea = nodeById[edges[e].source], eb = nodeById[edges[e].target];
+      if (!ea || !eb) continue;
+      eSrc.push(ea); eTgt.push(eb);
+    }
+    var edgeCount = eSrc.length;
+
+    var centerX = width / 2, centerY = height / 2;
+    var temp = width / 10;
+    var iterations = pickLayoutIterations(n);
+    var minDisplacementThreshold = Math.max(0.05, Math.min(width, height) * 0.0006);
+    var settledStreak = 0;
+
+    for (var iter = 0; iter < iterations; iter++) {
+      for (var z = 0; z < n; z++) { nodes[z].dx = 0; nodes[z].dy = 0; }
+
+      for (var i = 0; i < n; i++) {
+        var a = nodes[i], ax = a.x, ay = a.y, adx = a.dx, ady = a.dy;
+        for (var j = i + 1; j < n; j++) {
+          var b = nodes[j];
+          var dx = ax - b.x, dy = ay - b.y;
+          var dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+          var force = k2 / dist;
+          var fx = (dx / dist) * force, fy = (dy / dist) * force;
+          adx += fx; ady += fy;
+          b.dx -= fx; b.dy -= fy;
+        }
+        a.dx = adx; a.dy = ady;
+      }
+
+      for (var ei = 0; ei < edgeCount; ei++) {
+        var sA = eSrc[ei], sB = eTgt[ei];
+        var edx = sA.x - sB.x, edy = sA.y - sB.y;
+        var edist = Math.sqrt(edx * edx + edy * edy) || 0.01;
+        var eforce = (edist * edist) / k;
+        var efx = (edx / edist) * eforce, efy = (edy / edist) * eforce;
+        sA.dx -= efx; sA.dy -= efy;
+        sB.dx += efx; sB.dy += efy;
+      }
+
+      var totalDisp = 0;
+      for (var v = 0; v < n; v++) {
+        var vn = nodes[v];
+        vn.dx += (centerX - vn.x) * 0.012;
+        vn.dy += (centerY - vn.y) * 0.012;
+        var disp = Math.sqrt(vn.dx * vn.dx + vn.dy * vn.dy) || 0.01;
+        var lim = Math.min(disp, temp);
+        vn.x += (vn.dx / disp) * lim;
+        vn.y += (vn.dy / disp) * lim;
+        if (vn.x < 28) vn.x = 28; else if (vn.x > width - 28) vn.x = width - 28;
+        if (vn.y < 28) vn.y = 28; else if (vn.y > height - 28) vn.y = height - 28;
+        totalDisp += lim;
+      }
+
+      temp = Math.max(1, temp * 0.97);
+
+      if ((totalDisp / n) < minDisplacementThreshold) {
+        settledStreak++;
+        if (settledStreak >= 5) break;
+      } else {
+        settledStreak = 0;
+      }
+    }
+  }
+
+  var ECO_TYPE_META = {
+    project:      { label: 'Projects',      color: 'var(--eco-project)' },
+    organisation: { label: 'Organisations', color: 'var(--eco-organisation)' },
+    university:   { label: 'Universities',  color: 'var(--eco-university)' },
+    ngo:          { label: 'NGOs',          color: 'var(--eco-ngo)' },
+    government:   { label: 'Governments',   color: 'var(--eco-government)' },
+    funder:       { label: 'Funders',       color: 'var(--eco-funder)' },
+    researcher:   { label: 'Researchers',   color: 'var(--eco-researcher)' }
+  };
+  var ECO_TYPE_ORDER = ['project', 'organisation', 'university', 'ngo', 'government', 'funder', 'researcher'];
+
+  function ecoRadius(node) {
+    return Math.max(6, Math.min(16, 6 + node.degree * 1.4));
+  }
+
+  function cssEscapeAttr(s) {
+    return String(s).replace(/["\\]/g, '\\$&');
+  }
+
+  function renderEcosystemGraph(containerId, graph) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+
+    if (!graph.nodes.length) {
+      container.innerHTML = '<div class="empty-state" style="padding:24px 0;"><p>No projects, organisations, researchers or funders recorded yet to map relationships between.</p></div>';
+      return;
+    }
+
+    var width = 900, height = 560;
+    var nodeById = {};
+    graph.nodes.forEach(function (n) { nodeById[n.id] = n; });
+    layoutGraph(graph.nodes, graph.edges, nodeById, width, height);
+
+    var edgesSvg = graph.edges.map(function (e) {
+      var a = nodeById[e.source], b = nodeById[e.target];
+      if (!a || !b) return '';
+      return '<line class="eco-edge" data-a="' + escapeHtml(e.source) + '" data-b="' + escapeHtml(e.target) +
+        '" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>';
+    }).join('');
+
+    var nodesSvg = graph.nodes.map(function (node) {
+      var meta = ECO_TYPE_META[node.kind] || ECO_TYPE_META.organisation;
+      var r = ecoRadius(node);
+      var shortLabel = node.label.length > 20 ? node.label.slice(0, 19) + '\u2026' : node.label;
+      return '<g class="eco-node" data-id="' + escapeHtml(node.id) + '" data-kind="' + node.kind + '" transform="translate(' + node.x + ',' + node.y + ')">' +
+        '<title>' + escapeHtml(node.label) + '</title>' +
+        '<circle r="' + r + '" fill="' + meta.color + '"></circle>' +
+        '<text class="eco-label" y="' + (r + 11) + '" text-anchor="middle">' + escapeHtml(shortLabel) + '</text>' +
+      '</g>';
+    }).join('');
+
+    var legendHtml = ECO_TYPE_ORDER.map(function (kind) {
+      var count = graph.nodes.filter(function (n) { return n.kind === kind; }).length;
+      if (!count) return '';
+      var meta = ECO_TYPE_META[kind];
+      return '<label class="eco-legend-item">' +
+        '<input type="checkbox" checked class="eco-toggle" data-kind="' + kind + '">' +
+        '<span class="eco-dot" style="background:' + meta.color + '"></span>' +
+        escapeHtml(meta.label) + ' <span class="eco-legend-count">' + count + '</span>' +
+      '</label>';
+    }).join('');
+
+    container.innerHTML =
+      '<div class="eco-toolbar">' +
+        '<input type="text" id="ecoSearch" class="search-input eco-search" autocomplete="off" placeholder="Highlight an entity\u2026">' +
+        '<div class="eco-legend">' + legendHtml + '</div>' +
+      '</div>' +
+      '<div class="eco-graph-wrap">' +
+        '<svg id="ecoSvg" class="eco-svg" viewBox="0 0 ' + width + ' ' + height + '" xmlns="http://www.w3.org/2000/svg">' +
+          '<g id="ecoViewport">' +
+            '<g id="ecoEdges">' + edgesSvg + '</g>' +
+            '<g id="ecoNodes">' + nodesSvg + '</g>' +
+          '</g>' +
+        '</svg>' +
+        '<div class="eco-hint">Drag background to pan \u00b7 scroll to zoom \u00b7 drag a node to move it \u00b7 click a node for its connections</div>' +
+      '</div>' +
+      '<div id="ecoDetail" class="eco-detail"></div>';
+
+    wireEcosystemInteractions(graph, nodeById, width, height);
+  }
+
+  function wireEcosystemInteractions(graph, nodeById, width, height) {
+    var svg = document.getElementById('ecoSvg');
+    var viewport = document.getElementById('ecoViewport');
+    if (!svg || !viewport) return;
+
+    var scale = 1, tx = 0, ty = 0;
+    function applyTransform() {
+      viewport.setAttribute('transform', 'translate(' + tx + ',' + ty + ') scale(' + scale + ')');
+    }
+
+    function clientToSvg(clientX, clientY) {
+      var rect = svg.getBoundingClientRect();
+      var x = (clientX - rect.left) * (width / rect.width);
+      var y = (clientY - rect.top) * (height / rect.height);
+      return { x: (x - tx) / scale, y: (y - ty) / scale };
+    }
+
+    function updateNodePosition(node) {
+      var g = svg.querySelector('.eco-node[data-id="' + cssEscapeAttr(node.id) + '"]');
+      if (g) g.setAttribute('transform', 'translate(' + node.x + ',' + node.y + ')');
+      Array.prototype.forEach.call(svg.querySelectorAll('.eco-edge'), function (line) {
+        if (line.getAttribute('data-a') === node.id) { line.setAttribute('x1', node.x); line.setAttribute('y1', node.y); }
+        if (line.getAttribute('data-b') === node.id) { line.setAttribute('x2', node.x); line.setAttribute('y2', node.y); }
+      });
+    }
+
+    function clearHighlight() {
+      Array.prototype.forEach.call(svg.querySelectorAll('.eco-node, .eco-edge'), function (el) {
+        el.classList.remove('eco-dim');
+        el.classList.remove('eco-edge-active');
+      });
+      var detail = document.getElementById('ecoDetail');
+      if (detail) detail.innerHTML = '';
+    }
+
+    function highlightNode(id) {
+      var neighborIds = {};
+      neighborIds[id] = true;
+      graph.edges.forEach(function (e) {
+        if (e.source === id) neighborIds[e.target] = true;
+        if (e.target === id) neighborIds[e.source] = true;
+      });
+      Array.prototype.forEach.call(svg.querySelectorAll('.eco-node'), function (g) {
+        g.classList.toggle('eco-dim', !neighborIds[g.getAttribute('data-id')]);
+      });
+      Array.prototype.forEach.call(svg.querySelectorAll('.eco-edge'), function (line) {
+        var on = line.getAttribute('data-a') === id || line.getAttribute('data-b') === id;
+        line.classList.toggle('eco-edge-active', on);
+        line.classList.toggle('eco-dim', !on);
+      });
+    }
+
+    function showDetail(id) {
+      var node = nodeById[id];
+      var detail = document.getElementById('ecoDetail');
+      if (!node || !detail) return;
+      var conns = uniqueStrings(graph.edges.filter(function (e) { return e.source === id || e.target === id; })
+        .map(function (e) {
+          var otherId = e.source === id ? e.target : e.source;
+          var other = nodeById[otherId];
+          return other ? (e.label + ' \u2014 ' + other.label) : null;
+        }).filter(Boolean));
+      var meta = ECO_TYPE_META[node.kind] || ECO_TYPE_META.organisation;
+      detail.innerHTML = '<div class="project-card" style="margin-top:16px;">' +
+        '<div class="project-card-header"><h3>' + escapeHtml(node.label) + '</h3>' +
+        '<span class="project-status-pill">' + escapeHtml(meta.label) + '</span></div>' +
+        renderListBlock('Connections', conns, 'No recorded connections for this entity.') +
+      '</div>';
+    }
+
+    // Pan (background) + node drag
+    var panning = false, panStart = null, dragNode = null;
+    svg.addEventListener('mousedown', function (e) {
+      if (e.target.closest && e.target.closest('.eco-node')) return;
+      panning = true;
+      panStart = { x: e.clientX, y: e.clientY, tx: tx, ty: ty };
+    });
+    Array.prototype.forEach.call(svg.querySelectorAll('.eco-node'), function (g) {
+      g.addEventListener('mousedown', function (e) {
+        e.stopPropagation();
+        dragNode = nodeById[g.getAttribute('data-id')];
+      });
+      g.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var id = g.getAttribute('data-id');
+        highlightNode(id);
+        showDetail(id);
+      });
+    });
+    window.addEventListener('mousemove', function (e) {
+      if (panning && panStart) {
+        tx = panStart.tx + (e.clientX - panStart.x);
+        ty = panStart.ty + (e.clientY - panStart.y);
+        applyTransform();
+      } else if (dragNode) {
+        var pt = clientToSvg(e.clientX, e.clientY);
+        dragNode.x = pt.x; dragNode.y = pt.y;
+        updateNodePosition(dragNode);
+      }
+    });
+    window.addEventListener('mouseup', function () { panning = false; dragNode = null; });
+
+    svg.addEventListener('click', clearHighlight);
+
+    svg.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      scale = Math.max(0.3, Math.min(3, scale * (e.deltaY < 0 ? 1.1 : 0.9)));
+      applyTransform();
+    }, { passive: false });
+
+    // Legend filters
+    Array.prototype.forEach.call(document.querySelectorAll('.eco-toggle'), function (cb) {
+      cb.addEventListener('change', function () {
+        var visibleKinds = {};
+        Array.prototype.forEach.call(document.querySelectorAll('.eco-toggle'), function (c) {
+          if (c.checked) visibleKinds[c.getAttribute('data-kind')] = true;
+        });
+        Array.prototype.forEach.call(svg.querySelectorAll('.eco-node'), function (g) {
+          g.style.display = visibleKinds[g.getAttribute('data-kind')] ? '' : 'none';
+        });
+        Array.prototype.forEach.call(svg.querySelectorAll('.eco-edge'), function (line) {
+          var a = nodeById[line.getAttribute('data-a')];
+          var b = nodeById[line.getAttribute('data-b')];
+          var show = a && b && visibleKinds[a.kind] && visibleKinds[b.kind];
+          line.style.display = show ? '' : 'none';
+        });
+      });
+    });
+
+    // Search / highlight
+    var searchInput = document.getElementById('ecoSearch');
+    if (searchInput) {
+      searchInput.addEventListener('input', function (e) {
+        var q = e.target.value.trim().toLowerCase();
+        if (!q) { clearHighlight(); return; }
+        var matchIds = {};
+        graph.nodes.forEach(function (n) { if (n.label.toLowerCase().indexOf(q) !== -1) matchIds[n.id] = true; });
+        Array.prototype.forEach.call(svg.querySelectorAll('.eco-node'), function (g) {
+          g.classList.toggle('eco-dim', !matchIds[g.getAttribute('data-id')]);
+        });
+        Array.prototype.forEach.call(svg.querySelectorAll('.eco-edge'), function (line) {
+          line.classList.toggle('eco-dim', !(matchIds[line.getAttribute('data-a')] || matchIds[line.getAttribute('data-b')]));
+        });
+      });
+    }
+  }
+
+  // =================================================================
+  // Strategic Opportunity Detection
+  // -----------------------------------------------------------------
+  // Surfaces five things automatically from the same data every other
+  // section already reads: duplicate projects, similar research,
+  // potential collaborators, funding gaps, and new partnership
+  // opportunities. Every finding here is the output of an explicit,
+  // fixed rule evaluated against real fields (documented inline on
+  // each detector) \u2014 nothing is generated or estimated text, and
+  // nothing is written back to the database.
+  // =================================================================
+
+  var ECO_STOPWORDS = {
+    'the':1,'and':1,'for':1,'with':1,'from':1,'into':1,'of':1,'a':1,'an':1,'to':1,'in':1,'on':1,'at':1,'by':1,
+    'is':1,'are':1,'was':1,'were':1,'be':1,'been':1,'this':1,'that':1,'these':1,'those':1,'as':1,'it':1,'its':1,
+    'their':1,'our':1,'we':1,'will':1,'shall':1,'can':1,'may':1,'project':1,'projects':1,'programme':1,
+    'program':1,'initiative':1,'phase':1,'study':1,'new':1,'towards':1
+  };
+
+  function tokenize(text) {
+    return String(text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+      .filter(function (w) { return w.length >= 3 && !ECO_STOPWORDS[w]; });
+  }
+  function tokenSet(text) {
+    var set = {};
+    tokenize(text).forEach(function (w) { set[w] = 1; });
+    return set;
+  }
+  function jaccard(setA, setB) {
+    var keysA = Object.keys(setA), keysB = Object.keys(setB);
+    if (!keysA.length || !keysB.length) return 0;
+    var inter = 0;
+    keysA.forEach(function (k) { if (setB[k]) inter++; });
+    var union = keysA.length + keysB.length - inter;
+    return union ? inter / union : 0;
+  }
+
+  function resolveOrgName(v, db) {
+    if (typeof v === 'string') {
+      var match = findByIdOrName(db.organisations, v);
+      return match ? (getField(match, ['name', 'organisationName', 'orgName']) || v) : v;
+    }
+    return resolveCollaboratorName(v, db);
+  }
+
+  /**
+   * buildProjectSimilarityPairs
+   * ---------------------------------------------------------------
+   * Every project pair, scored on two independent, fixed measures:
+   * Jaccard similarity of title words and of description words (both
+   * with common stopwords removed), plus whether they share a
+   * recorded category. Duplicate Projects and Similar Research below
+   * are just two different score bands read off this same table, so
+   * a pair is never counted as both.
+   */
+  function buildProjectSimilarityPairs(db) {
+    var projects = Array.isArray(db.projects) ? db.projects : [];
+    var enriched = projects.map(function (p) {
+      var title = getField(p, ['name', 'title', 'projectName', 'projectTitle']) || 'Untitled project';
+      var desc = getField(p, ['description', 'summary', 'overview', 'details']);
+      var category = getField(p, ['category', 'focusArea', 'theme']);
+      return { title: title, category: category, titleSet: tokenSet(title), descSet: tokenSet(desc) };
+    });
+    var pairs = [];
+    for (var i = 0; i < enriched.length; i++) {
+      for (var j = i + 1; j < enriched.length; j++) {
+        var a = enriched[i], b = enriched[j];
+        var titleSim = jaccard(a.titleSet, b.titleSet);
+        var descSim = jaccard(a.descSet, b.descSet);
+        var sameCategory = !!a.category && !!b.category && a.category.toLowerCase() === b.category.toLowerCase();
+        if (titleSim === 0 && descSim === 0 && !sameCategory) continue;
+        pairs.push({ a: a.title, b: b.title, titleSim: titleSim, descSim: descSim, sameCategory: sameCategory, category: sameCategory ? a.category : null });
+      }
+    }
+    return pairs;
+  }
+
+  // A pair counts as a likely Duplicate when their titles overlap
+  // heavily, or their descriptions overlap heavily within the same
+  // recorded category.
+  function detectDuplicateProjects(pairs) {
+    return pairs.filter(function (pr) {
+      return pr.titleSim >= 0.5 || (pr.sameCategory && pr.descSim >= 0.4);
+    }).sort(function (x, y) { return (y.titleSim + y.descSim) - (x.titleSim + x.descSim); });
+  }
+
+  // Similar Research is the band just below Duplicate \u2014 real
+  // topical overlap, not the same project recorded twice. Anything
+  // already flagged as a duplicate is excluded so nothing is listed
+  // in both places.
+  function detectSimilarResearch(pairs, duplicates) {
+    var dupKeys = {};
+    duplicates.forEach(function (d) { dupKeys[d.a + '|' + d.b] = true; });
+    return pairs.filter(function (pr) {
+      if (dupKeys[pr.a + '|' + pr.b]) return false;
+      var titleBand = pr.titleSim >= 0.22 && pr.titleSim < 0.5;
+      var descBand = pr.sameCategory && pr.descSim >= 0.18 && pr.descSim < 0.4;
+      return titleBand || descBand;
+    }).sort(function (x, y) { return (y.titleSim + y.descSim) - (x.titleSim + x.descSim); });
+  }
+
+  function formatSimilarityItem(pr) {
+    var bits = [];
+    if (pr.titleSim > 0) bits.push(Math.round(pr.titleSim * 100) + '% title overlap');
+    if (pr.sameCategory) bits.push('same category (' + pr.category + ')');
+    if (pr.descSim > 0) bits.push(Math.round(pr.descSim * 100) + '% description overlap');
+    return '\u201c' + pr.a + '\u201d \u2194 \u201c' + pr.b + '\u201d \u2014 ' + bits.join(', ');
+  }
+
+  /**
+   * detectPotentialCollaborators
+   * ---------------------------------------------------------------
+   * For every recorded category, collects the organisations already
+   * leading or collaborating on a project in that category. For each
+   * project, any organisation active elsewhere in its own category
+   * but not already linked to it is surfaced as a suggestion \u2014
+   * grounded entirely in collaborations that are already on record
+   * for other projects.
+   */
+  function detectPotentialCollaborators(db) {
+    var projects = Array.isArray(db.projects) ? db.projects : [];
+    var categoryOrgs = {};
+
+    function linkedOrgNames(p) {
+      var names = {};
+      [p.organisation, p.leadOrganisation, p.organisationId, p.orgId].forEach(function (v) {
+        if (v == null) return;
+        var n = resolveOrgName(v, db);
+        if (n) names[n.toLowerCase()] = n;
+      });
+      getListField(p, ['collaborators', 'partners', 'collaboratingOrganisations', 'team']).forEach(function (entry) {
+        var n = resolveCollaboratorName(entry, db);
+        if (n) names[n.toLowerCase()] = n;
+      });
+      return names;
+    }
+
+    projects.forEach(function (p) {
+      var title = getField(p, ['name', 'title', 'projectName', 'projectTitle']) || 'Untitled project';
+      var category = getField(p, ['category', 'focusArea', 'theme']);
+      if (!category) return;
+      var key = category.toLowerCase();
+      var names = linkedOrgNames(p);
+      Object.keys(names).forEach(function (lower) {
+        (categoryOrgs[key] = categoryOrgs[key] || []).push({ org: names[lower], lower: lower, via: title });
+      });
+    });
+
+    var suggestions = [];
+    projects.forEach(function (p) {
+      var title = getField(p, ['name', 'title', 'projectName', 'projectTitle']) || 'Untitled project';
+      var category = getField(p, ['category', 'focusArea', 'theme']);
+      if (!category) return;
+      var key = category.toLowerCase();
+      var existing = linkedOrgNames(p);
+      var seen = {};
+      (categoryOrgs[key] || []).forEach(function (c) {
+        if (existing[c.lower] || seen[c.lower] || c.via === title) return;
+        seen[c.lower] = true;
+        suggestions.push({ project: title, org: c.org, category: category, via: c.via });
+      });
+    });
+    return suggestions;
+  }
+
+  /**
+   * detectFundingGaps
+   * ---------------------------------------------------------------
+   * Three independent gap checks, each read off fields already used
+   * elsewhere in SIE: projects with no matched funders (same
+   * resolution Project Intelligence uses), recorded categories where
+   * not one of their projects has a matched funder, and funders in
+   * db.funders that have not been matched to any project yet.
+   */
+  function detectFundingGaps(db) {
+    var projects = Array.isArray(db.projects) ? db.projects : [];
+    var funders = Array.isArray(db.funders) ? db.funders : [];
+    var unfundedProjects = [];
+    var categoryFunderCount = {};
+    var categoryLabels = {};
+    var matchedFunderNames = {};
+
+    projects.forEach(function (p) {
+      var title = getField(p, ['name', 'title', 'projectName', 'projectTitle']) || 'Untitled project';
+      var category = getField(p, ['category', 'focusArea', 'theme']);
+      var fundingRaw = getListField(p, ['matchedFunders', 'fundingOpportunities', 'targetFunders', 'funders']);
+      var fundingNames = uniqueStrings(fundingRaw.map(function (entry) { return resolveFunderName(entry, db); }).filter(Boolean));
+      fundingNames.forEach(function (n) { matchedFunderNames[n.toLowerCase()] = true; });
+      if (!fundingNames.length) unfundedProjects.push(title);
+      if (category) {
+        var key = category.toLowerCase();
+        categoryLabels[key] = category;
+        categoryFunderCount[key] = (categoryFunderCount[key] || 0) + fundingNames.length;
+      }
+    });
+
+    var categoryGaps = Object.keys(categoryFunderCount)
+      .filter(function (k) { return categoryFunderCount[k] === 0; })
+      .map(function (k) { return categoryLabels[k]; });
+
+    var unusedFunders = uniqueStrings(funders.map(function (f) { return getField(f, ['name', 'funderName']); })
+      .filter(function (name) { return name && !matchedFunderNames[name.toLowerCase()]; }));
+
+    return {
+      unfundedProjects: uniqueStrings(unfundedProjects),
+      categoryGaps: uniqueStrings(categoryGaps),
+      unusedFunders: unusedFunders
+    };
+  }
+
+  var ECO_ORG_KINDS = { organisation: 1, university: 1, ngo: 1, government: 1 };
+
+  /**
+   * detectPartnershipOpportunities
+   * ---------------------------------------------------------------
+   * Reuses the Ecosystem Mapping graph: for every pair of
+   * organisation-type nodes (organisation/university/ngo/government)
+   * that are NOT already directly connected, counts how many
+   * projects, funders or researchers they both already connect to.
+   * Any pair with at least one such shared connection is a
+   * "friend-of-a-friend" partnership candidate, ranked by how many
+   * connections they already share.
+   */
+  function detectPartnershipOpportunities(graph) {
+    var nodeById = {};
+    graph.nodes.forEach(function (n) { nodeById[n.id] = n; });
+    var adjacency = {};
+    graph.nodes.forEach(function (n) { adjacency[n.id] = {}; });
+    graph.edges.forEach(function (e) {
+      adjacency[e.source][e.target] = true;
+      adjacency[e.target][e.source] = true;
+    });
+
+    var orgNodes = graph.nodes.filter(function (n) { return ECO_ORG_KINDS[n.kind]; });
+    var results = [];
+    for (var i = 0; i < orgNodes.length; i++) {
+      for (var j = i + 1; j < orgNodes.length; j++) {
+        var a = orgNodes[i], b = orgNodes[j];
+        if (adjacency[a.id][b.id]) continue;
+        var shared = Object.keys(adjacency[a.id]).filter(function (nid) { return adjacency[b.id][nid]; });
+        if (!shared.length) continue;
+        var sharedLabels = shared.map(function (id) { return nodeById[id] ? nodeById[id].label : null; }).filter(Boolean);
+        results.push({ a: a.label, b: b.label, sharedCount: shared.length, sharedLabels: sharedLabels });
+      }
+    }
+    results.sort(function (x, y) { return y.sharedCount - x.sharedCount; });
+    return results.slice(0, 25);
+  }
+
+  function computeStrategicOpportunities(db, graph) {
+    var pairs = buildProjectSimilarityPairs(db);
+    var duplicates = detectDuplicateProjects(pairs);
+    var similar = detectSimilarResearch(pairs, duplicates);
+    var collaborators = detectPotentialCollaborators(db);
+    var fundingGaps = detectFundingGaps(db);
+    var partnerships = detectPartnershipOpportunities(graph);
+
+    var duplicateItems = duplicates.map(formatSimilarityItem);
+    var similarItems = similar.map(formatSimilarityItem);
+    var collaboratorItems = collaborators.map(function (c) {
+      return c.org + ' \u2014 suggested for \u201c' + c.project + '\u201d (already active in ' + c.category + ' via \u201c' + c.via + '\u201d)';
+    });
+    var partnershipItems = partnerships.map(function (pr) {
+      var shown = pr.sharedLabels.slice(0, 4).join(', ') + (pr.sharedLabels.length > 4 ? ', \u2026' : '');
+      return pr.a + ' \u2194 ' + pr.b + ' \u2014 ' + pr.sharedCount + ' shared connection' + (pr.sharedCount === 1 ? '' : 's') + ': ' + shown;
+    });
+
+    var fundingGapCount = fundingGaps.unfundedProjects.length + fundingGaps.categoryGaps.length + fundingGaps.unusedFunders.length;
+    var totalFlagged = duplicateItems.length + similarItems.length + collaboratorItems.length + fundingGapCount + partnershipItems.length;
+
+    return {
+      duplicateItems: duplicateItems,
+      similarItems: similarItems,
+      collaboratorItems: collaboratorItems,
+      fundingGaps: fundingGaps,
+      partnershipItems: partnershipItems,
+      totalFlagged: totalFlagged
+    };
+  }
+
+  function renderOpportunitySection(title, count, bodyHtml, badgeWord) {
+    return '<div class="project-card">' +
+      '<div class="project-card-header"><h3>' + escapeHtml(title) + '</h3>' +
+      '<span class="project-status-pill">' + count + ' ' + (badgeWord || 'flagged') + '</span></div>' +
+      bodyHtml +
+    '</div>';
+  }
+
+  function renderOpportunityDetection(containerId, opp) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+
+    container.innerHTML =
+      renderOpportunitySection('Duplicate projects', opp.duplicateItems.length,
+        renderListBlock('Likely duplicates', opp.duplicateItems, 'No projects with significant title or description overlap were found.')) +
+      renderOpportunitySection('Similar research', opp.similarItems.length,
+        renderListBlock('Related but distinct', opp.similarItems, 'No projects with moderate topical overlap were found.')) +
+      renderOpportunitySection('Potential collaborators', opp.collaboratorItems.length,
+        renderListBlock('Suggested by shared focus area', opp.collaboratorItems, 'No organisations already active in a project\u2019s category were found unlinked to it.')) +
+      renderOpportunitySection('Funding gaps',
+        opp.fundingGaps.unfundedProjects.length + opp.fundingGaps.categoryGaps.length + opp.fundingGaps.unusedFunders.length,
+        '<div class="intel-grid">' +
+          renderListBlock('Unfunded projects', opp.fundingGaps.unfundedProjects, 'Every project has at least one matched funder.') +
+          renderListBlock('Categories with no funding coverage', opp.fundingGaps.categoryGaps, 'Every recorded category has at least one matched funder somewhere in it.') +
+          renderListBlock('Funders not yet matched to a project', opp.fundingGaps.unusedFunders, 'Every recorded funder is already matched to at least one project.') +
+        '</div>') +
+      renderOpportunitySection('New partnership opportunities', opp.partnershipItems.length,
+        renderListBlock('Shared-connection suggestions', opp.partnershipItems, 'No unconnected organisations share a common project, funder or researcher yet.'));
+  }
+
+  // =================================================================
+  // Data Integrity & Synchronisation
+  // -----------------------------------------------------------------
+  // A read-only audit of the loaded Strategic Database itself \u2014
+  // distinct from Strategic Opportunity Detection above, which looks
+  // for insights *within* the data. This section checks whether the
+  // sync that produced the data actually did its job correctly.
+  // Everything here is derived from what's already in `db` (or, for
+  // the schema-version check, a constant defined below matching
+  // AAWFIP's own STRATEGIC_DB_SCHEMA_VERSION) \u2014 nothing is fetched
+  // from AAWFIP directly (SIE never loads AAWFIP's code), nothing is
+  // invented, and nothing is written back anywhere.
+  //
+  // Four checks:
+  //   1. Export verification \u2014 for every collection/field AAWFIP's
+  //      sync module is documented to populate, checks it has the
+  //      right shape (array vs single object-or-null) and cross-
+  //      checks the database's own declared metadata.recordCount
+  //      against what's actually present (a mismatch usually means a
+  //      partial or stale write).
+  //   2. Duplicate records \u2014 flags repeated `id` values within a
+  //      collection (two entries claiming the same identity is
+  //      always a data problem, regardless of collection), plus
+  //      repeated names for projects/organisations/funders as a
+  //      softer, human-facing signal.
+  //   3. Relationship validation \u2014 checks every entry in
+  //      db.relationships actually resolves: a funderProjectFit's
+  //      funderId must exist in db.funders (and its projectId, when
+  //      not null, must exist in db.projects); a funderContact's
+  //      funderId must exist in db.funders; and there should be
+  //      exactly one organisationFunderIdentity record per
+  //      organisation, reflecting AAWFIP's documented design that
+  //      organisations and funders are the same underlying records.
+  //   4. Version check \u2014 compares db.metadata.schemaVersion against
+  //      SIE_EXPECTED_SCHEMA_VERSION and flags the database as
+  //      outdated (needs a re-sync in AAWFIP) or newer than this
+  //      build of SIE knows how to read.
+  // =================================================================
+
+  // The Strategic Database schema version this build of SIE was
+  // written to understand \u2014 matches AAWFIP v46's own
+  // STRATEGIC_DB_SCHEMA_VERSION (8, which added the `relationships`
+  // collection). Update this constant, and EXPECTED_COLLECTIONS
+  // above, whenever SIE is updated to understand a newer AAWFIP
+  // schema.
+  var SIE_EXPECTED_SCHEMA_VERSION = 8;
+
+  // Collections AAWFIP's sync module actively populates on every
+  // sync from a real, existing source module, plus a human-readable
+  // name for that source \u2014 used only for display in the export
+  // verification list below.
+  var ACTIVE_EXPORT_CHECKS = [
+    { key: 'projects', kind: 'array', module: 'My Projects Store' },
+    { key: 'organisations', kind: 'array', module: 'Organisation Engine' },
+    { key: 'funders', kind: 'array', module: 'Funding Engine' },
+    { key: 'applicantCompetitiveness', kind: 'object-or-null', module: 'Applicant Competitiveness Engine' },
+    { key: 'relationships', kind: 'array', module: 'Relationships (derived from funders / organisations / projects)' }
+  ];
+
+  // Collections that exist in the schema as reserved placeholders \u2014
+  // AAWFIP does not yet have a source module to populate these from,
+  // so they are expected to be empty. Flagged separately (not as
+  // failures) so a genuinely broken export isn't confused with a
+  // feature that simply hasn't been built yet.
+  var RESERVED_EXPORT_CHECKS = [
+    { key: 'competitors', module: 'Competitor Intelligence Engine' },
+    { key: 'researchers', module: 'Researcher data module' },
+    { key: 'publications', module: 'Publications data module' },
+    { key: 'fundingSchemes', module: '(no source module wired yet)' },
+    { key: 'contacts', module: '(no source module wired yet \u2014 see funder.profile.contacts, exported via relationships instead)' },
+    { key: 'changeLog', module: '(no source module wired yet)' }
+  ];
+
+  function idKey(record) {
+    if (!record || record.id === undefined || record.id === null || record.id === '') return null;
+    return String(record.id);
+  }
+
+  /**
+   * checkExports
+   * ---------------------------------------------------------------
+   * Verifies every actively-synced collection has the shape AAWFIP's
+   * sync module is documented to write, and cross-checks the
+   * database's own declared metadata.recordCount against a fresh sum
+   * over what's actually present. Read-only; never mutates db.
+   */
+  function checkExports(db) {
+    var meta = db.metadata || {};
+
+    var active = ACTIVE_EXPORT_CHECKS.map(function (check) {
+      var value = db[check.key];
+      var present = Object.prototype.hasOwnProperty.call(db, check.key);
+      var shapeOk = check.kind === 'array'
+        ? Array.isArray(value)
+        : (value === null || value === undefined || (typeof value === 'object' && !Array.isArray(value)));
+      return {
+        key: check.key,
+        module: check.module,
+        present: present,
+        shapeOk: shapeOk,
+        count: Array.isArray(value) ? value.length : (value ? 1 : 0)
+      };
+    });
+
+    var reserved = RESERVED_EXPORT_CHECKS.map(function (check) {
+      var value = db[check.key];
+      var present = Object.prototype.hasOwnProperty.call(db, check.key);
+      return {
+        key: check.key,
+        module: check.module,
+        present: present,
+        shapeOk: present ? Array.isArray(value) : true,
+        count: Array.isArray(value) ? value.length : 0
+      };
+    });
+
+    var actualCount =
+      countOf(db.organisations) + countOf(db.fundingSchemes) + countOf(db.contacts) +
+      countOf(db.projects) + countOf(db.funders) + (db.applicantCompetitiveness ? 1 : 0) +
+      countOf(db.competitors) + countOf(db.researchers) + countOf(db.publications) +
+      countOf(db.relationships);
+    var declaredCount = (typeof meta.recordCount === 'number') ? meta.recordCount : null;
+
+    return {
+      active: active,
+      reserved: reserved,
+      actualCount: actualCount,
+      declaredCount: declaredCount,
+      recordCountOk: declaredCount === null ? null : (declaredCount === actualCount)
+    };
+  }
+
+  /**
+   * checkDuplicates
+   * ---------------------------------------------------------------
+   * Flags repeated `id` values within each collection (an actual
+   * data-integrity problem \u2014 two records can't share one identity),
+   * plus repeated names within projects/organisations/funders as a
+   * softer signal a person can use their own judgement on (e.g. two
+   * genuinely different funders sharing a generic name).
+   */
+  function checkDuplicates(db) {
+    function findIdDupes(list, label) {
+      if (!Array.isArray(list)) return [];
+      var counts = {};
+      list.forEach(function (item) {
+        var key = idKey(item);
+        if (key === null) return;
+        counts[key] = (counts[key] || 0) + 1;
+      });
+      var out = [];
+      Object.keys(counts).forEach(function (key) {
+        if (counts[key] > 1) out.push(label + ' \u2014 id "' + key + '" appears ' + counts[key] + ' times');
+      });
+      return out;
+    }
+
+    function findNameDupes(list, label, nameFields) {
+      if (!Array.isArray(list)) return [];
+      var counts = {};
+      list.forEach(function (item) {
+        var name = getField(item, nameFields);
+        if (!name) return;
+        var key = name.trim().toLowerCase();
+        counts[key] = counts[key] || { name: name, n: 0 };
+        counts[key].n++;
+      });
+      var out = [];
+      Object.keys(counts).forEach(function (key) {
+        if (counts[key].n > 1) out.push(label + ' \u2014 "' + counts[key].name + '" appears ' + counts[key].n + ' times');
+      });
+      return out;
+    }
+
+    var idDupes = []
+      .concat(findIdDupes(db.projects, 'Projects'))
+      .concat(findIdDupes(db.organisations, 'Organisations'))
+      .concat(findIdDupes(db.funders, 'Funders'))
+      .concat(findIdDupes(db.competitors, 'Competitors'))
+      .concat(findIdDupes(db.researchers, 'Researchers'))
+      .concat(findIdDupes(db.publications, 'Publications'));
+
+    var nameDupes = []
+      .concat(findNameDupes(db.projects, 'Projects', ['title', 'name', 'projectName', 'projectTitle']))
+      .concat(findNameDupes(db.organisations, 'Organisations', ['name', 'organisationName', 'orgName']))
+      .concat(findNameDupes(db.funders, 'Funders', ['name', 'funderName']));
+
+    return { idDupes: idDupes, nameDupes: nameDupes };
+  }
+
+  /**
+   * checkRelationships
+   * ---------------------------------------------------------------
+   * Validates db.relationships against the collections it's derived
+   * from (db.funders / db.projects / db.organisations), matching by
+   * id exactly the way AAWFIP's own deriveRelationships() built the
+   * records in the first place. A funderProjectFit or funderContact
+   * whose funderId doesn't resolve, or a funderProjectFit whose
+   * (non-null) projectId doesn't resolve, means the relationships
+   * collection has drifted from the records it's supposed to link \u2014
+   * most likely because one side was edited/re-synced without the
+   * other. organisationFunderIdentity coverage is checked as a count
+   * (one expected per organisation) rather than only individual
+   * lookups, since AAWFIP's own design has funderId === organisationId
+   * for that record type.
+   */
+  function checkRelationships(db) {
+    var relationships = Array.isArray(db.relationships) ? db.relationships : [];
+    var funderIds = {}, projectIds = {}, orgIds = {};
+    (Array.isArray(db.funders) ? db.funders : []).forEach(function (f) {
+      var k = idKey(f); if (k) funderIds[k] = true;
+    });
+    (Array.isArray(db.projects) ? db.projects : []).forEach(function (p) {
+      var k = idKey(p); if (k) projectIds[k] = true;
+    });
+    (Array.isArray(db.organisations) ? db.organisations : []).forEach(function (o) {
+      var k = idKey(o); if (k) orgIds[k] = true;
+    });
+
+    var brokenFunderRefs = [];
+    var brokenProjectRefs = [];
+    var brokenIdentityRefs = [];
+    var funderFitCount = 0, contactCount = 0, identityCount = 0;
+
+    relationships.forEach(function (rel) {
+      if (!rel || !rel.type) return;
+      if (rel.type === 'funderProjectFit') {
+        funderFitCount++;
+        if (rel.funderId != null && !funderIds[String(rel.funderId)]) {
+          brokenFunderRefs.push('"' + (rel.funderName || rel.funderId) + '" \u2014 funder no longer found in Funders (relationship type: funder \u2194 project fit)');
+        }
+        if (rel.projectId != null && !projectIds[String(rel.projectId)]) {
+          brokenProjectRefs.push('"' + (rel.projectName || rel.projectId) + '" \u2014 project no longer found in Projects (matched to funder "' + (rel.funderName || rel.funderId) + '")');
+        }
+      } else if (rel.type === 'funderContact') {
+        contactCount++;
+        if (rel.funderId != null && !funderIds[String(rel.funderId)]) {
+          brokenFunderRefs.push('"' + (rel.funderName || rel.funderId) + '" \u2014 funder no longer found in Funders (relationship type: funder contact "' + (rel.contactName || 'unnamed') + '")');
+        }
+      } else if (rel.type === 'organisationFunderIdentity') {
+        identityCount++;
+        if (rel.organisationId != null && !orgIds[String(rel.organisationId)]) {
+          brokenIdentityRefs.push('"' + (rel.name || rel.organisationId) + '" \u2014 organisation no longer found in Organisations');
+        }
+        if (rel.funderId != null && !funderIds[String(rel.funderId)]) {
+          brokenIdentityRefs.push('"' + (rel.name || rel.funderId) + '" \u2014 funder no longer found in Funders');
+        }
+      }
+    });
+
+    var orgCount = countOf(db.organisations);
+    var funderCount = countOf(db.funders);
+    var identityCoverageOk = orgCount === identityCount;
+    var orgFunderCountsMatch = orgCount === funderCount;
+
+    return {
+      total: relationships.length,
+      funderFitCount: funderFitCount,
+      contactCount: contactCount,
+      identityCount: identityCount,
+      orgCount: orgCount,
+      funderCount: funderCount,
+      identityCoverageOk: identityCoverageOk,
+      orgFunderCountsMatch: orgFunderCountsMatch,
+      brokenFunderRefs: brokenFunderRefs,
+      brokenProjectRefs: brokenProjectRefs,
+      brokenIdentityRefs: brokenIdentityRefs
+    };
+  }
+
+  /**
+   * checkVersion
+   * ---------------------------------------------------------------
+   * Compares the loaded database's declared schema version against
+   * SIE_EXPECTED_SCHEMA_VERSION. Three outcomes: 'current' (equal),
+   * 'outdated' (database's version is older than what this SIE build
+   * expects \u2014 re-sync in AAWFIP will upgrade it in place, since
+   * AAWFIP's own load/ensure functions are additive), or 'newer'
+   * (database's version is ahead of this SIE build \u2014 AAWFIP has
+   * added collections this version of SIE doesn't yet know to read).
+   * 'unknown' if no version is recorded at all.
+   */
+  function checkVersion(db) {
+    var meta = db.metadata || {};
+    var dbVersion = (typeof meta.schemaVersion === 'number') ? meta.schemaVersion : null;
+    var status;
+    if (dbVersion === null) status = 'unknown';
+    else if (dbVersion === SIE_EXPECTED_SCHEMA_VERSION) status = 'current';
+    else if (dbVersion < SIE_EXPECTED_SCHEMA_VERSION) status = 'outdated';
+    else status = 'newer';
+    return { dbVersion: dbVersion, expectedVersion: SIE_EXPECTED_SCHEMA_VERSION, status: status };
+  }
+
+  /**
+   * computeDataIntegrity
+   * ---------------------------------------------------------------
+   * Runs all four checks and rolls them up into a single overall
+   * status ('ok' or 'warn') for the top banner. Any shape mismatch,
+   * record-count mismatch, duplicate id, broken relationship
+   * reference, or non-current schema version puts the banner into
+   * 'warn' \u2014 duplicate *names* alone do not, since a shared name can
+   * be legitimate and is shown as a softer signal rather than a fault.
+   */
+  function computeDataIntegrity(db) {
+    var exportCheck = checkExports(db);
+    var dupCheck = checkDuplicates(db);
+    var relCheck = checkRelationships(db);
+    var versionCheck = checkVersion(db);
+
+    var hasShapeIssue = exportCheck.active.some(function (c) { return !c.shapeOk; }) ||
+      exportCheck.reserved.some(function (c) { return !c.shapeOk; });
+    var hasRecordCountIssue = exportCheck.recordCountOk === false;
+    var hasIdDupes = dupCheck.idDupes.length > 0;
+    var hasBrokenRefs = relCheck.brokenFunderRefs.length > 0 || relCheck.brokenProjectRefs.length > 0 ||
+      relCheck.brokenIdentityRefs.length > 0 || !relCheck.identityCoverageOk || !relCheck.orgFunderCountsMatch;
+    var hasVersionIssue = versionCheck.status !== 'current';
+
+    var overall = (hasShapeIssue || hasRecordCountIssue || hasIdDupes || hasBrokenRefs || hasVersionIssue) ? 'warn' : 'ok';
+
+    return {
+      exportCheck: exportCheck, dupCheck: dupCheck, relCheck: relCheck, versionCheck: versionCheck,
+      overall: overall
+    };
+  }
+
+  function integrityRow(label, ok, detail) {
+    return '<div class="integrity-row">' +
+      '<span class="integrity-pill ' + (ok ? 'ok' : 'fail') + '">' + (ok ? 'Pass' : 'Fail') + '</span>' +
+      '<span class="integrity-label">' + escapeHtml(label) + '</span>' +
+      (detail ? '<span class="integrity-detail">' + escapeHtml(detail) + '</span>' : '') +
+    '</div>';
+  }
+
+  function versionMessage(vc) {
+    if (vc.status === 'unknown') {
+      return 'This database doesn\u2019t record a schema version at all \u2014 it likely predates version checking. Re-synchronise from AAWFIP to bring it up to date.';
+    }
+    if (vc.status === 'current') {
+      return 'Schema v' + vc.dbVersion + ' \u2014 matches what this build of SIE expects.';
+    }
+    if (vc.status === 'outdated') {
+      return 'Schema v' + vc.dbVersion + ' is older than v' + vc.expectedVersion + ', the version this build of SIE expects. Open AAWFIP and click \u201cSynchronise Strategic Intelligence\u201d again \u2014 its sync module upgrades the database in place (no data is lost), then reload this page.';
+    }
+    return 'Schema v' + vc.dbVersion + ' is newer than v' + vc.expectedVersion + ', the version this build of SIE was written to understand. AAWFIP has added collections since this SIE build was last updated \u2014 data may be present but not shown here. Update SIE to a version that understands schema v' + vc.dbVersion + '.';
+  }
+
+  function renderDataIntegrity(containerId, integrity) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+
+    var exp = integrity.exportCheck, dup = integrity.dupCheck, rel = integrity.relCheck, vc = integrity.versionCheck;
+
+    var bannerText = integrity.overall === 'ok'
+      ? 'All export, duplicate, relationship and version checks passed \u2014 this Strategic Database is internally consistent.'
+      : 'One or more checks below need attention \u2014 see the details in each panel.';
+    var banner =
+      '<div class="integrity-banner ' + (integrity.overall === 'ok' ? 'ok' : 'warn') + '">' +
+        '<span class="integrity-pill ' + (integrity.overall === 'ok' ? 'ok' : 'warn') + '">' +
+          (integrity.overall === 'ok' ? 'All checks passed' : 'Needs attention') +
+        '</span>' +
+        '<span>' + escapeHtml(bannerText) + '</span>' +
+      '</div>';
+
+    // --- 1. Export verification -------------------------------------
+    var exportRows = exp.active.map(function (c) {
+      var ok = c.present && c.shapeOk;
+      var detail = ok ? (c.count + ' record' + (c.count === 1 ? '' : 's')) : 'Missing or wrong shape';
+      return integrityRow(c.key + ' \u2014 ' + c.module, ok, detail);
+    }).join('');
+    var reservedRows = exp.reserved.map(function (c) {
+      var ok = c.present && c.shapeOk;
+      return integrityRow(c.key + ' (reserved) \u2014 ' + c.module, ok,
+        ok ? (c.count + ' record' + (c.count === 1 ? '' : 's') + ', as expected while unbuilt') : 'Missing or wrong shape');
+    }).join('');
+    var recordCountRow = exp.declaredCount === null
+      ? integrityRow('metadata.recordCount', true, 'Not recorded on this database \u2014 nothing to cross-check')
+      : integrityRow('metadata.recordCount matches actual record total', exp.recordCountOk,
+          'Declared ' + exp.declaredCount + ', actual ' + exp.actualCount +
+          (exp.recordCountOk ? '' : ' \u2014 mismatch suggests a partial or stale sync'));
+
+    var exportSection = renderOpportunitySection(
+      'Module export verification',
+      exp.active.filter(function (c) { return !(c.present && c.shapeOk); }).length +
+        exp.reserved.filter(function (c) { return !(c.present && c.shapeOk); }).length +
+        (exp.recordCountOk === false ? 1 : 0),
+      '<div class="intel-block"><div class="label">Actively synced collections</div>' + exportRows + '</div>' +
+      '<div class="intel-block"><div class="label">Reserved collections (no source module yet)</div>' + reservedRows + '</div>' +
+      '<div class="intel-block"><div class="label">Record count cross-check</div>' + recordCountRow + '</div>',
+      'issue' + (exp.active.length + exp.reserved.length === 1 ? '' : 's')
+    );
+
+    // --- 2. Duplicate records ------------------------------------------
+    var duplicateSection = renderOpportunitySection(
+      'Duplicate records',
+      dup.idDupes.length,
+      '<div class="intel-grid">' +
+        renderListBlock('Duplicate IDs (data integrity fault)', dup.idDupes, 'No two records in any collection share the same id.') +
+        renderListBlock('Duplicate names (informational \u2014 may be legitimate)', dup.nameDupes, 'No repeated project, organisation or funder names were found.') +
+      '</div>'
+    );
+
+    // --- 3. Relationship validation -------------------------------------
+    var relCoverageItems = [];
+    relCoverageItems.push(rel.orgFunderCountsMatch
+      ? 'Organisations (' + rel.orgCount + ') and Funders (' + rel.funderCount + ') counts match \u2014 confirmed'
+      : 'Organisations (' + rel.orgCount + ') and Funders (' + rel.funderCount + ') counts do NOT match \u2014 they\u2019re documented to be the same underlying records, so this indicates a partial sync');
+    relCoverageItems.push(rel.identityCoverageOk
+      ? 'organisationFunderIdentity coverage complete \u2014 ' + rel.identityCount + ' of ' + rel.orgCount + ' organisations'
+      : 'organisationFunderIdentity coverage incomplete \u2014 ' + rel.identityCount + ' of ' + rel.orgCount + ' organisations have an identity record');
+
+    var relationshipSection = renderOpportunitySection(
+      'Relationship validation',
+      rel.brokenFunderRefs.length + rel.brokenProjectRefs.length + rel.brokenIdentityRefs.length +
+        (rel.identityCoverageOk ? 0 : 1) + (rel.orgFunderCountsMatch ? 0 : 1),
+      '<div class="intel-block"><div class="label">Coverage</div>' +
+        '<ul><li>' + escapeHtml('Total relationships: ' + rel.total +
+          ' (' + rel.funderFitCount + ' funder\u2194project fit, ' + rel.contactCount + ' funder contact, ' +
+          rel.identityCount + ' organisation\u2194funder identity)') + '</li>' +
+        relCoverageItems.map(function (i) { return '<li>' + escapeHtml(i) + '</li>'; }).join('') +
+        '</ul></div>' +
+      '<div class="intel-grid">' +
+        renderListBlock('Relationships referencing a missing funder', rel.brokenFunderRefs, 'Every relationship\u2019s funderId resolves to a real funder record.') +
+        renderListBlock('Relationships referencing a missing project', rel.brokenProjectRefs, 'Every funder\u2194project fit\u2019s projectId resolves to a real project record (or was correctly recorded as unmatched).') +
+        renderListBlock('Broken organisation\u2194funder identity links', rel.brokenIdentityRefs, 'Every organisation\u2194funder identity record resolves on both sides.') +
+      '</div>'
+    );
+
+    // --- 4. Version check -----------------------------------------------
+    var versionSection =
+      '<div class="project-card">' +
+        '<div class="project-card-header"><h3>Database version</h3>' +
+        '<span class="project-status-pill">' +
+          (vc.status === 'current' ? 'Up to date' : vc.status === 'outdated' ? 'Outdated' : vc.status === 'newer' ? 'Newer than SIE' : 'Unknown') +
+        '</span></div>' +
+        '<p style="margin:10px 0 0; color:var(--text-mid); font-size:0.88rem;">' + escapeHtml(versionMessage(vc)) + '</p>' +
+      '</div>';
+
+    container.innerHTML = banner + exportSection + duplicateSection + relationshipSection + versionSection;
+  }
+
+  // =================================================================
+  // Timeline Intelligence
+  // -----------------------------------------------------------------
+  // Four date-oriented views built from fields already used
+  // elsewhere in SIE: funding deadlines (the same project deadline
+  // field Project Intelligence's Risks check reads, plus any
+  // deadline recorded directly on a funder/funding scheme), project
+  // milestones (a project's own milestones/keyDates/deliverables/
+  // schedule array, when its entries carry a date), synchronisation
+  // history (db.changeLog \u2014 AAWFIP's own sync log, already an
+  // expected top-level collection), and upcoming opportunities
+  // (funders/funding schemes not yet matched to any project, whose
+  // deadline \u2014 if they have one \u2014 has not yet passed). Nothing here
+  // is invented: an item with no parsable date is simply left off
+  // the relevant list rather than guessed at.
+  // =================================================================
+
+  function parseDateSafe(raw) {
+    if (!raw) return null;
+    var d = new Date(raw);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  function daysBetween(date, from) {
+    return Math.round((date.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
+  }
+
+  function formatRelativeDays(date, now) {
+    var days = daysBetween(date, now);
+    if (days === 0) return 'today';
+    if (days > 0) return 'in ' + days + ' day' + (days === 1 ? '' : 's');
+    return Math.abs(days) + ' day' + (Math.abs(days) === 1 ? '' : 's') + ' overdue';
+  }
+
+  function collectFundingDeadlines(db) {
+    var out = [];
+    (Array.isArray(db.projects) ? db.projects : []).forEach(function (p) {
+      var title = getField(p, ['name', 'title', 'projectName', 'projectTitle']) || 'Untitled project';
+      var date = parseDateSafe(getField(p, ['deadline', 'applicationDeadline', 'dueDate']));
+      if (date) out.push({ date: date, label: title, source: 'project' });
+    });
+    [db.funders, db.fundingSchemes].forEach(function (collection) {
+      (Array.isArray(collection) ? collection : []).forEach(function (f) {
+        var name = getField(f, ['name', 'funderName', 'fundingSchemeName']) || 'Untitled funder';
+        var date = parseDateSafe(getField(f, ['deadline', 'applicationDeadline', 'closingDate', 'nextDeadline', 'submissionDeadline']));
+        if (date) out.push({ date: date, label: name, source: 'funder' });
+      });
+    });
+    return out;
+  }
+
+  function collectProjectMilestones(db) {
+    var out = [];
+    (Array.isArray(db.projects) ? db.projects : []).forEach(function (p) {
+      var projectTitle = getField(p, ['name', 'title', 'projectName', 'projectTitle']) || 'Untitled project';
+      getListField(p, ['milestones', 'keyDates', 'deliverables', 'schedule']).forEach(function (entry) {
+        var title, raw, status;
+        if (typeof entry === 'string') {
+          title = entry; raw = null; status = '';
+        } else if (entry && typeof entry === 'object') {
+          title = getField(entry, ['title', 'name', 'label', 'milestone']) || 'Milestone';
+          raw = getField(entry, ['date', 'dueDate', 'targetDate', 'deadline']);
+          status = getField(entry, ['status', 'stage']);
+        } else {
+          return;
+        }
+        var date = parseDateSafe(raw);
+        if (!date) return;
+        out.push({ date: date, label: title, project: projectTitle, status: status });
+      });
+    });
+    return out;
+  }
+
+  function collectSyncHistory(db) {
+    var out = [];
+    (Array.isArray(db.changeLog) ? db.changeLog : []).forEach(function (entry) {
+      if (typeof entry === 'string') {
+        out.push({ date: null, label: entry });
+        return;
+      }
+      if (entry && typeof entry === 'object') {
+        var date = parseDateSafe(getField(entry, ['date', 'timestamp', 'syncedAt', 'createdAt', 'at']));
+        var desc = getField(entry, ['description', 'summary', 'message', 'action', 'note', 'event']) || 'Synchronisation event';
+        out.push({ date: date, label: desc });
+      }
+    });
+    return out;
+  }
+
+  function collectUpcomingOpportunities(db) {
+    var matchedFunderNames = {};
+    (Array.isArray(db.projects) ? db.projects : []).forEach(function (p) {
+      getListField(p, ['matchedFunders', 'fundingOpportunities', 'targetFunders', 'funders']).forEach(function (entry) {
+        var n = resolveFunderName(entry, db);
+        if (n) matchedFunderNames[n.toLowerCase()] = true;
+      });
+    });
+    var out = [];
+    [db.funders, db.fundingSchemes].forEach(function (collection) {
+      (Array.isArray(collection) ? collection : []).forEach(function (f) {
+        var name = getField(f, ['name', 'funderName', 'fundingSchemeName']) || 'Untitled funder';
+        if (matchedFunderNames[name.toLowerCase()]) return;
+        var date = parseDateSafe(getField(f, ['deadline', 'applicationDeadline', 'closingDate', 'nextDeadline', 'submissionDeadline']));
+        out.push({ date: date, label: name });
+      });
+    });
+    return out;
+  }
+
+  function formatDeadlineItem(item, now) {
+    return item.label + ' \u2014 ' + formatDate(item.date.toISOString()) + ' (' + formatRelativeDays(item.date, now) + ')';
+  }
+
+  function formatMilestoneItem(item, now) {
+    var bits = [item.project];
+    if (item.status) bits.push(item.status);
+    return item.label + ' \u2014 ' + formatDate(item.date.toISOString()) + ' (' + formatRelativeDays(item.date, now) + ') \u2014 ' + bits.join(', ');
+  }
+
+  function formatSyncItem(item) {
+    var when = item.date ? formatDate(item.date.toISOString()) : 'Undated';
+    return when + ' \u2014 ' + item.label;
+  }
+
+  function formatOpportunityItem(item, now) {
+    if (!item.date) return item.label + ' \u2014 no deadline recorded (rolling / ongoing)';
+    return item.label + ' \u2014 ' + formatDate(item.date.toISOString()) + ' (' + formatRelativeDays(item.date, now) + ')';
+  }
+
+  function computeTimelineIntelligence(db) {
+    var now = new Date();
+
+    var deadlines = collectFundingDeadlines(db).sort(function (a, b) { return a.date - b.date; });
+    var milestones = collectProjectMilestones(db).sort(function (a, b) { return a.date - b.date; });
+    var syncHistory = collectSyncHistory(db).sort(function (a, b) {
+      if (!a.date && !b.date) return 0;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return b.date - a.date;
+    });
+    var opportunities = collectUpcomingOpportunities(db)
+      .filter(function (o) { return !o.date || o.date >= now; })
+      .sort(function (a, b) {
+        if (!a.date && !b.date) return 0;
+        if (!a.date) return 1;
+        if (!b.date) return -1;
+        return a.date - b.date;
+      });
+
+    var deadlinesOverdue = deadlines.filter(function (d) { return d.date < now; });
+    var deadlinesUpcoming = deadlines.filter(function (d) { return d.date >= now; });
+    var milestonesOverdue = milestones.filter(function (m) { return m.date < now; });
+    var milestonesUpcoming = milestones.filter(function (m) { return m.date >= now; });
+
+    var soonCutoff = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    var dueWithin30Days = deadlinesUpcoming.filter(function (d) { return d.date <= soonCutoff; }).length +
+      milestonesUpcoming.filter(function (m) { return m.date <= soonCutoff; }).length;
+
+    return {
+      dueWithin30Days: dueWithin30Days,
+      deadlinesOverdueItems: deadlinesOverdue.map(function (d) { return formatDeadlineItem(d, now); }),
+      deadlinesUpcomingItems: deadlinesUpcoming.map(function (d) { return formatDeadlineItem(d, now); }),
+      milestonesOverdueItems: milestonesOverdue.map(function (m) { return formatMilestoneItem(m, now); }),
+      milestonesUpcomingItems: milestonesUpcoming.map(function (m) { return formatMilestoneItem(m, now); }),
+      syncHistoryItems: syncHistory.map(formatSyncItem),
+      opportunityItems: opportunities.map(function (o) { return formatOpportunityItem(o, now); })
+    };
+  }
+
+  function renderTimelineIntelligence(containerId, tl) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+
+    container.innerHTML =
+      renderOpportunitySection('Funding deadlines',
+        tl.deadlinesOverdueItems.length + tl.deadlinesUpcomingItems.length,
+        '<div class="intel-grid">' +
+          renderListBlock('Overdue', tl.deadlinesOverdueItems, 'No overdue funding deadlines.', 'risks') +
+          renderListBlock('Upcoming', tl.deadlinesUpcomingItems, 'No upcoming funding deadlines recorded.') +
+        '</div>', 'recorded') +
+      renderOpportunitySection('Project milestones',
+        tl.milestonesOverdueItems.length + tl.milestonesUpcomingItems.length,
+        '<div class="intel-grid">' +
+          renderListBlock('Overdue', tl.milestonesOverdueItems, 'No overdue milestones.', 'risks') +
+          renderListBlock('Upcoming', tl.milestonesUpcomingItems, 'No upcoming milestones recorded.') +
+        '</div>', 'recorded') +
+      renderOpportunitySection('Synchronisation history', tl.syncHistoryItems.length,
+        renderListBlock('Recorded sync events, most recent first', tl.syncHistoryItems, 'No synchronisation history recorded yet.'), 'recorded') +
+      renderOpportunitySection('Upcoming opportunities', tl.opportunityItems.length,
+        renderListBlock('Not yet matched to a project', tl.opportunityItems, 'Every recorded funder is already matched to a project, or none are recorded yet.'), 'open');
+  }
+
+  // =================================================================
+  // Strategic Reports
+  // -----------------------------------------------------------------
+  // Read-only report views assembled entirely from data already
+  // computed by the sections above (Project Intelligence,
+  // Organisation Intelligence, Ecosystem Mapping, Strategic
+  // Opportunity Detection, Timeline Intelligence). Nothing here
+  // recomputes or invents a figure \u2014 every table and list is built
+  // from the same records those sections already read. Export is a
+  // plain browser print (Save as PDF), scoped to just the report via
+  // the #reportPrintArea print stylesheet above, so no external
+  // library or network access is required.
+  // =================================================================
+
+  var REPORT_TYPES = [
+    { id: 'funding', label: 'Funding strategy' },
+    { id: 'collaboration', label: 'Collaboration strategy' },
+    { id: 'portfolio', label: 'Portfolio overview' },
+    { id: 'pipeline', label: 'Research pipeline' },
+    { id: 'opportunity', label: 'Opportunity report' }
+  ];
+
+  var ORG_KIND_LABELS = {
+    organisation: 'Organisation', university: 'University',
+    ngo: 'NGO', government: 'Government'
+  };
+
+  var currentReportContext = null;
+
+  function reportHeader(title, subtitle, ctx) {
+    var meta = ctx.db.metadata || {};
+    return '<div class="report-doc-header">' +
+      '<h2>' + escapeHtml(title) + '</h2>' +
+      '<div class="report-sub">' + escapeHtml(subtitle) +
+        ' \u00b7 Source: ' + escapeHtml(meta.source || 'Unknown') +
+        ' \u00b7 Last synchronised: ' + escapeHtml(formatDate(meta.lastSyncedAt)) +
+        ' \u00b7 Generated: ' + escapeHtml(formatDate(new Date().toISOString())) +
+      '</div></div>';
+  }
+
+  function reportSummaryStrip(stats) {
+    return '<div class="report-summary-strip">' +
+      stats.map(function (s) {
+        return '<div class="report-summary-cell"><div class="num">' + escapeHtml(String(s.num)) +
+          '</div><div class="label">' + escapeHtml(s.label) + '</div></div>';
+      }).join('') +
+    '</div>';
+  }
+
+  function reportSection(title, bodyHtml) {
+    return '<div class="report-section"><h3>' + escapeHtml(title) + '</h3>' + bodyHtml + '</div>';
+  }
+
+  function reportList(items, emptyText) {
+    if (!items.length) return '<div class="report-empty">' + escapeHtml(emptyText) + '</div>';
+    return '<ul class="report-list">' + items.map(function (i) { return '<li>' + escapeHtml(i) + '</li>'; }).join('') + '</ul>';
+  }
+
+  function reportTable(headers, rows, emptyText) {
+    if (!rows.length) return '<div class="report-empty">' + escapeHtml(emptyText) + '</div>';
+    var thead = '<tr>' + headers.map(function (h) { return '<th>' + escapeHtml(h) + '</th>'; }).join('') + '</tr>';
+    var tbody = rows.map(function (row) {
+      return '<tr>' + row.map(function (cell) {
+        var shown = (cell === null || cell === undefined || cell === '') ? '\u2014' : cell;
+        return '<td>' + escapeHtml(shown) + '</td>';
+      }).join('') + '</tr>';
+    }).join('');
+    return '<table class="report-table"><thead>' + thead + '</thead><tbody>' + tbody + '</tbody></table>';
+  }
+
+  /**
+   * buildFundingReport
+   * ---------------------------------------------------------------
+   * Reuses: Project Intelligence (per-project matched funders and
+   * budget), Strategic Opportunity Detection's funding-gap detector,
+   * and Timeline Intelligence's funding deadlines.
+   */
+  function buildFundingReport(ctx) {
+    var opp = ctx.opportunities, tl = ctx.timeline, pi = ctx.projectIntel;
+    var summary = [
+      { num: opp.fundingGaps.unfundedProjects.length, label: 'Unfunded projects' },
+      { num: opp.fundingGaps.categoryGaps.length, label: 'Category gaps' },
+      { num: opp.fundingGaps.unusedFunders.length, label: 'Unmatched funders' },
+      { num: tl.dueWithin30Days, label: 'Due within 30 days' }
+    ];
+    var pipelineRows = pi.map(function (p) {
+      return [p.title, p.status, p.budget, p.fundingNames.length ? p.fundingNames.join(', ') : ''];
+    });
+    return reportHeader('Funding Strategy', 'Funding pipeline, coverage gaps and upcoming deadlines across the portfolio.', ctx) +
+      reportSummaryStrip(summary) +
+      reportSection('Funding pipeline by project',
+        reportTable(['Project', 'Status', 'Budget', 'Matched funders'], pipelineRows, 'No projects recorded in the Strategic Database yet.')) +
+      reportSection('Unfunded projects', reportList(opp.fundingGaps.unfundedProjects, 'Every project has at least one matched funder.')) +
+      reportSection('Categories with no funding coverage', reportList(opp.fundingGaps.categoryGaps, 'Every recorded category has at least one matched funder somewhere in it.')) +
+      reportSection('Funders not yet matched to a project', reportList(opp.fundingGaps.unusedFunders, 'Every recorded funder is already matched to a project.')) +
+      reportSection('Overdue funding deadlines', reportList(tl.deadlinesOverdueItems, 'No overdue funding deadlines.')) +
+      reportSection('Upcoming funding deadlines', reportList(tl.deadlinesUpcomingItems, 'No upcoming funding deadlines recorded.'));
+  }
+
+  /**
+   * buildCollaborationReport
+   * ---------------------------------------------------------------
+   * Reuses: Organisation Intelligence (relationships, active
+   * projects, partners), the Ecosystem Mapping graph's edge count,
+   * and Strategic Opportunity Detection's collaborator/partnership
+   * detectors.
+   */
+  function buildCollaborationReport(ctx) {
+    var oi = ctx.orgIntel, opp = ctx.opportunities, graph = ctx.graph;
+    var summary = [
+      { num: oi.length, label: 'Organisations' },
+      { num: opp.collaboratorItems.length, label: 'Suggested collaborators' },
+      { num: opp.partnershipItems.length, label: 'Partnership opportunities' },
+      { num: graph.edges.length, label: 'Recorded relationships' }
+    ];
+    var orgRows = oi.map(function (o) {
+      return [o.title, o.type, String(o.activeProjects.length), String(o.partners.length), String(o.relationships.length)];
+    });
+    return reportHeader('Collaboration Strategy', 'Existing partnerships and unrealised collaboration opportunities across the ecosystem.', ctx) +
+      reportSummaryStrip(summary) +
+      reportSection('Organisations',
+        reportTable(['Organisation', 'Type', 'Active projects', 'Partners', 'Relationships'], orgRows, 'No organisations recorded in the Strategic Database yet.')) +
+      reportSection('Suggested collaborators', reportList(opp.collaboratorItems, 'No organisations already active in a project\u2019s category were found unlinked to it.')) +
+      reportSection('New partnership opportunities', reportList(opp.partnershipItems, 'No unconnected organisations share a common project, funder or researcher yet.'));
+  }
+
+  /**
+   * buildPortfolioReport
+   * ---------------------------------------------------------------
+   * Reuses: Project Intelligence for the project table, and the same
+   * organisation classification Ecosystem Mapping uses to break the
+   * organisation count down by type.
+   */
+  function buildPortfolioReport(ctx) {
+    var pi = ctx.projectIntel, db = ctx.db;
+    var orgKindCounts = { organisation: 0, university: 0, ngo: 0, government: 0 };
+    (Array.isArray(db.organisations) ? db.organisations : []).forEach(function (o) {
+      var k = classifyOrganisation(o);
+      orgKindCounts[k] = (orgKindCounts[k] || 0) + 1;
+    });
+    var summary = [
+      { num: pi.length, label: 'Projects' },
+      { num: countOf(db.organisations), label: 'Organisations' },
+      { num: countOf(db.funders), label: 'Funders' },
+      { num: countUploadedDocuments(db.projects), label: 'Documents' }
+    ];
+    var projectRows = pi.map(function (p) {
+      return [p.title, p.status, p.category, p.budget, p.timeline, String(p.fundingNames.length), String(p.collaboratorNames.length)];
+    });
+    var orgRows = Object.keys(orgKindCounts).map(function (k) {
+      return [ORG_KIND_LABELS[k] || k, String(orgKindCounts[k])];
+    });
+    return reportHeader('Portfolio Overview', 'A synthesis of every recorded project and the wider organisational footprint.', ctx) +
+      reportSummaryStrip(summary) +
+      reportSection('Projects',
+        reportTable(['Project', 'Status', 'Category', 'Budget', 'Timeline', 'Funders matched', 'Collaborators'], projectRows, 'No projects recorded in the Strategic Database yet.')) +
+      reportSection('Organisations by type', reportTable(['Type', 'Count'], orgRows, 'No organisations recorded in the Strategic Database yet.'));
+  }
+
+  /**
+   * buildPipelineReport
+   * ---------------------------------------------------------------
+   * Reuses: Project Intelligence for stage/status, Timeline
+   * Intelligence's project milestones, and Strategic Opportunity
+   * Detection's duplicate/similar-research findings.
+   */
+  function buildPipelineReport(ctx) {
+    var pi = ctx.projectIntel, tl = ctx.timeline, opp = ctx.opportunities;
+    var summary = [
+      { num: pi.length, label: 'Projects' },
+      { num: tl.milestonesOverdueItems.length, label: 'Overdue milestones' },
+      { num: tl.milestonesUpcomingItems.length, label: 'Upcoming milestones' },
+      { num: opp.duplicateItems.length + opp.similarItems.length, label: 'Overlap flagged' }
+    ];
+    var rows = pi.map(function (p) {
+      return [p.title, p.status, p.category, p.timeline, String(p.risks.length)];
+    });
+    return reportHeader('Research Pipeline', 'Every project by stage, with milestone timing and topical overlap.', ctx) +
+      reportSummaryStrip(summary) +
+      reportSection('Projects by stage',
+        reportTable(['Project', 'Status', 'Category', 'Timeline', 'Risks flagged'], rows, 'No projects recorded in the Strategic Database yet.')) +
+      reportSection('Overdue milestones', reportList(tl.milestonesOverdueItems, 'No overdue milestones.')) +
+      reportSection('Upcoming milestones', reportList(tl.milestonesUpcomingItems, 'No upcoming milestones recorded.')) +
+      reportSection('Likely duplicate projects', reportList(opp.duplicateItems, 'No projects with significant title or description overlap were found.')) +
+      reportSection('Similar research', reportList(opp.similarItems, 'No projects with moderate topical overlap were found.'));
+  }
+
+  /**
+   * buildOpportunityReport
+   * ---------------------------------------------------------------
+   * A print-ready compilation of everything Strategic Opportunity
+   * Detection already found \u2014 no new detection logic, just a report
+   * layout over the same computed opp object.
+   */
+  function buildOpportunityReport(ctx) {
+    var opp = ctx.opportunities;
+    var fundingGapCount = opp.fundingGaps.unfundedProjects.length + opp.fundingGaps.categoryGaps.length + opp.fundingGaps.unusedFunders.length;
+    var summary = [
+      { num: opp.totalFlagged, label: 'Total flagged' },
+      { num: opp.duplicateItems.length, label: 'Duplicate projects' },
+      { num: opp.similarItems.length, label: 'Similar research' },
+      { num: opp.collaboratorItems.length, label: 'Potential collaborators' },
+      { num: fundingGapCount, label: 'Funding gaps' },
+      { num: opp.partnershipItems.length, label: 'Partnerships' }
+    ];
+    return reportHeader('Opportunity Report', 'Every opportunity automatically surfaced from the Strategic Database.', ctx) +
+      reportSummaryStrip(summary) +
+      reportSection('Duplicate projects', reportList(opp.duplicateItems, 'No projects with significant title or description overlap were found.')) +
+      reportSection('Similar research', reportList(opp.similarItems, 'No projects with moderate topical overlap were found.')) +
+      reportSection('Potential collaborators', reportList(opp.collaboratorItems, 'No organisations already active in a project\u2019s category were found unlinked to it.')) +
+      reportSection('Unfunded projects', reportList(opp.fundingGaps.unfundedProjects, 'Every project has at least one matched funder.')) +
+      reportSection('Categories with no funding coverage', reportList(opp.fundingGaps.categoryGaps, 'Every recorded category has at least one matched funder somewhere in it.')) +
+      reportSection('Funders not yet matched to a project', reportList(opp.fundingGaps.unusedFunders, 'Every recorded funder is already matched to a project.')) +
+      reportSection('New partnership opportunities', reportList(opp.partnershipItems, 'No unconnected organisations share a common project, funder or researcher yet.'));
+  }
+
+  function buildReportHtml(typeId, ctx) {
+    switch (typeId) {
+      case 'funding': return buildFundingReport(ctx);
+      case 'collaboration': return buildCollaborationReport(ctx);
+      case 'pipeline': return buildPipelineReport(ctx);
+      case 'opportunity': return buildOpportunityReport(ctx);
+      case 'portfolio': default: return buildPortfolioReport(ctx);
+    }
+  }
+
+  function renderStrategicReportsSection(containerId) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+
+    var options = REPORT_TYPES.map(function (r) {
+      return '<option value="' + r.id + '">' + escapeHtml(r.label) + '</option>';
+    }).join('');
+
+    container.innerHTML =
+      '<div class="reports-toolbar">' +
+        '<select id="reportTypeSelect" class="report-select" aria-label="Report type">' + options + '</select>' +
+        '<button id="reportExportBtn" class="report-export-btn" type="button">Export as PDF</button>' +
+        '<span class="report-meta" id="reportMeta"></span>' +
+      '</div>' +
+      '<div class="panel report-doc" id="reportPrintArea"></div>';
+
+    var select = document.getElementById('reportTypeSelect');
+    var exportBtn = document.getElementById('reportExportBtn');
+    var metaEl = document.getElementById('reportMeta');
+
+    function renderCurrent() {
+      if (!currentReportContext) return;
+      document.getElementById('reportPrintArea').innerHTML = buildReportHtml(select.value, currentReportContext);
+      var label = REPORT_TYPES.filter(function (r) { return r.id === select.value; })[0];
+      metaEl.textContent = label ? label.label + ' \u2014 ready to export' : '';
+    }
+
+    select.addEventListener('change', renderCurrent);
+    exportBtn.addEventListener('click', function () {
+      var label = REPORT_TYPES.filter(function (r) { return r.id === select.value; })[0];
+      var originalTitle = document.title;
+      exportBtn.disabled = true;
+      exportBtn.textContent = 'Preparing\u2026';
+      // Deferred one tick so "Preparing…" actually paints before the
+      // print dialog opens and blocks the main thread.
+      setTimeout(function () {
+        // A descriptive document title so "Save as PDF" in the print
+        // dialog defaults to a useful filename instead of the page's
+        // generic title.
+        if (label) {
+          document.title = 'SIE - ' + label.label + ' - ' + new Date().toISOString().slice(0, 10);
+        }
+        // Plain browser print, scoped to #reportPrintArea by the print
+        // stylesheet above. "Save as PDF" in the print dialog's
+        // destination picker is how this becomes a PDF \u2014 no external
+        // library or network access is used.
+        window.print();
+        document.title = originalTitle;
+        exportBtn.disabled = false;
+        exportBtn.textContent = 'Export as PDF';
+      }, 30);
+    });
+
+    renderCurrent();
+  }
+
+  var checkIconSvg =
+    '<svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+      '<path d="M20 6 9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '</svg>';
+  var dashIconSvg =
+    '<svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+      '<path d="M5 12h14" stroke-linecap="round"/>' +
+    '</svg>';
+
+  // =================================================================
+  // Backup \u2014 Export / Import of the Strategic Database
+  // -----------------------------------------------------------------
+  // Export downloads whatever is currently stored under
+  // AAWFIP_StrategicDatabase, byte-for-byte, as a JSON file \u2014 a plain
+  // read, no different from the rest of this page. Import is the one
+  // deliberate exception to SIE's read-only design: after a person
+  // picks a backup file, this shows exactly what is currently stored
+  // vs. what the file contains, and only writes to localStorage if
+  // they explicitly confirm the restore in that dialog. See the
+  // top-of-file comment and the STRATEGIC_DB_STORAGE_KEY comment.
+  // =================================================================
+
+  function readRawDb() {
+    try {
+      return window.localStorage.getItem(STRATEGIC_DB_STORAGE_KEY);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function backupSummaryRows(db) {
+    if (!db || typeof db !== 'object') return null;
+    var meta = db.metadata || {};
+    return [
+      { label: 'Projects', num: countOf(db.projects) },
+      { label: 'Organisations', num: countOf(db.organisations) },
+      { label: 'Funders', num: countOf(db.funders) },
+      { label: 'Last synchronised', num: formatDate(meta.lastSyncedAt) }
+    ];
+  }
+
+  function renderCompareCol(title, rows, fallbackText) {
+    var body = rows
+      ? rows.map(function (r) { return '<div>' + escapeHtml(r.label) + ': <strong>' + escapeHtml(String(r.num)) + '</strong></div>'; }).join('')
+      : '<div style="color:var(--text-lo);font-style:italic;">' + escapeHtml(fallbackText) + '</div>';
+    return '<div class="col"><h4>' + escapeHtml(title) + '</h4>' + body + '</div>';
+  }
+
+  function closeRestoreModal() {
+    var mount = document.getElementById('modalMount');
+    if (mount) mount.innerHTML = '';
+  }
+
+  var backupStatusTimer = null;
+  function setBackupStatus(msg, kind) {
+    var el = document.getElementById('backupStatusMsg');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'backup-status' + (kind ? ' ' + kind : '');
+    if (backupStatusTimer) clearTimeout(backupStatusTimer);
+    if (msg) {
+      backupStatusTimer = setTimeout(function () {
+        el.textContent = '';
+        el.className = 'backup-status';
+      }, 6000);
+    }
+  }
+
+  function performRestore(rawText) {
+    try {
+      window.localStorage.setItem(STRATEGIC_DB_STORAGE_KEY, rawText);
+    } catch (e) {
+      closeRestoreModal();
+      setBackupStatus('Restore failed: ' + (e && e.message ? e.message : 'could not write to local storage') + '.', 'err');
+      return;
+    }
+    closeRestoreModal();
+    setBackupStatus('Restored \u2014 reloading\u2026', 'ok');
+    setTimeout(function () { window.location.reload(); }, 500);
+  }
+
+  function openRestoreConfirmModal(fileName, rawText, incomingDb) {
+    var current = loadResult();
+    var currentRows = current.state === 'valid' ? backupSummaryRows(current.db) : null;
+    var currentFallback = current.state === 'missing' ? 'No Strategic Database currently stored.' : 'Currently stored data could not be read.';
+    var incomingRows = backupSummaryRows(incomingDb);
+
+    var mount = document.getElementById('modalMount');
+    if (!mount) return;
+    mount.innerHTML =
+      '<div class="modal-overlay" id="restoreOverlay">' +
+        '<div class="modal">' +
+          '<h2>Restore from backup?</h2>' +
+          '<p>You are about to replace this browser\u2019s <code>AAWFIP_StrategicDatabase</code> with the contents of ' +
+            '<strong>' + escapeHtml(fileName) + '</strong>. AAWFIP will use the restored data the next time it reads this key.</p>' +
+          '<div class="modal-compare">' +
+            renderCompareCol('Currently stored', currentRows, currentFallback) +
+            renderCompareCol('Backup file', incomingRows, 'Backup file has no recognisable collections.') +
+          '</div>' +
+          '<div class="modal-warning">This replaces the current data in this browser and can\u2019t be undone from here \u2014 export a backup of the current data first if you want to keep it.</div>' +
+          '<div class="modal-actions">' +
+            '<button type="button" class="modal-btn cancel" id="restoreCancelBtn">Cancel</button>' +
+            '<button type="button" class="modal-btn confirm" id="restoreConfirmBtn">Restore backup</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    document.getElementById('restoreCancelBtn').addEventListener('click', closeRestoreModal);
+    document.getElementById('restoreOverlay').addEventListener('click', function (e) {
+      if (e.target.id === 'restoreOverlay') closeRestoreModal();
+    });
+    document.getElementById('restoreConfirmBtn').addEventListener('click', function () {
+      performRestore(rawText);
+    });
+  }
+
+  function triggerExport() {
+    var raw = readRawDb();
+    if (raw === null) {
+      setBackupStatus('Nothing to export yet.', 'err');
+      return;
+    }
+    var stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    var filename = 'AAWFIP_StrategicDatabase-backup-' + stamp + '.json';
+    var blob = new Blob([raw], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    setBackupStatus('Exported ' + filename, 'ok');
+  }
+
+  function handleImportFile(file) {
+    if (!file) return;
+    setBackupStatus('Reading ' + file.name + '\u2026', '');
+    var reader = new FileReader();
+    reader.onerror = function () {
+      setBackupStatus('Could not read that file.', 'err');
+    };
+    reader.onload = function () {
+      var text = String(reader.result || '');
+      var parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch (e) {
+        setBackupStatus('That file is not valid JSON.', 'err');
+        return;
+      }
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        setBackupStatus('That file is not a Strategic Database object.', 'err');
+        return;
+      }
+      setBackupStatus('', '');
+      openRestoreConfirmModal(file.name, text, parsed);
+    };
+    reader.readAsText(file);
+  }
+
+  var uploadIconSvg =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M12 4l-4 4M12 4l4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var downloadIconSvg =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12M12 16l-4-4M12 16l4-4M4 20h16" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  /**
+   * renderBackupControls
+   * ---------------------------------------------------------------
+   * Populates the header's Export/Import controls. Called once from
+   * init(), independent of whether a database is currently present,
+   * so Import is always available even on a browser with nothing
+   * stored yet (e.g. restoring onto a fresh browser).
+   */
+  function renderBackupControls() {
+    var el = document.getElementById('backupControls');
+    if (!el) return;
+    var hasData = readRawDb() !== null;
+    el.innerHTML =
+      '<button type="button" class="backup-btn" id="exportBackupBtn" title="Download the current Strategic Database as a JSON backup file"' + (hasData ? '' : ' disabled') + '>' +
+        downloadIconSvg + '<span>Export backup</span>' +
+      '</button>' +
+      '<button type="button" class="backup-btn" id="importBackupBtn" title="Restore a previously exported Strategic Database backup">' +
+        uploadIconSvg + '<span>Import backup</span>' +
+      '</button>' +
+      '<input type="file" id="importBackupInput" accept="application/json,.json" style="display:none;">' +
+      '<span class="backup-status" id="backupStatusMsg"></span>';
+
+    document.getElementById('exportBackupBtn').addEventListener('click', triggerExport);
+    var fileInput = document.getElementById('importBackupInput');
+    document.getElementById('importBackupBtn').addEventListener('click', function () { fileInput.click(); });
+    fileInput.addEventListener('change', function (e) {
+      var file = e.target.files && e.target.files[0];
+      handleImportFile(file);
+      fileInput.value = '';
+    });
+  }
+
+  function renderMissing() {
+    document.getElementById('pageMeta').textContent = 'No Strategic Database found in this browser';
+    document.getElementById('panel').innerHTML =
+      '<div class="empty-state">' +
+        '<svg class="empty-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">' +
+          '<circle cx="12" cy="12" r="9"/><path d="M12 8v5" stroke-linecap="round"/><circle cx="12" cy="16.2" r="0.6" fill="currentColor" stroke="none"/>' +
+        '</svg>' +
+        '<h2>No Strategic Intelligence data yet</h2>' +
+        '<p>This browser doesn\u2019t have an <code>AAWFIP_StrategicDatabase</code> saved yet. ' +
+        'Open AAWFIP and click &ldquo;Synchronise Strategic Intelligence&rdquo; first, then come back and reload this page \u2014 ' +
+        'or use Backup &gt; Import above to restore a previously exported backup.</p>' +
+      '</div>';
+  }
+
+  function renderInvalid(reason) {
+    document.getElementById('pageMeta').textContent = 'Strategic Database could not be validated';
+    document.getElementById('panel').innerHTML =
+      '<div class="empty-state invalid-state">' +
+        '<svg class="empty-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">' +
+          '<circle cx="12" cy="12" r="9"/><path d="M12 8v5" stroke-linecap="round"/><circle cx="12" cy="16.2" r="0.6" fill="currentColor" stroke="none"/>' +
+        '</svg>' +
+        '<h2>Strategic Database found, but unreadable</h2>' +
+        '<p>' + escapeHtml(reason) + ' Try synchronising again from AAWFIP, or use Backup &gt; Import above to restore a known-good backup. ' +
+        'SIE only ever writes to storage through that explicit, confirmed action, so nothing here is changed just by viewing this page.</p>' +
+      '</div>';
+  }
+
+  function renderValid(db) {
+    var meta = db.metadata || {};
+    document.getElementById('pageMeta').textContent = 'Strategic Database loaded and validated successfully';
+
+    // Computed once, up front, so the Strategic Dashboard stat strip,
+    // the Ecosystem Mapping graph, and Strategic Opportunity Detection
+    // all read from the exact same graph/opportunity data below.
+    var ecosystemGraph = buildEcosystemGraph(db);
+    var opportunities = computeStrategicOpportunities(db, ecosystemGraph);
+    var timeline = computeTimelineIntelligence(db);
+    var integrity = computeDataIntegrity(db);
+
+    // --- Strategic Dashboard --------------------------------------
+    // Exactly the summary statistics requested for this stage, each
+    // read straight off the synchronised database — nothing computed
+    // here is invented or estimated.
+    //
+    // "Number of uploaded documents" sums each project's own
+    // uploadedDocuments array (see countUploadedDocuments above).
+    //
+    // "Number of applications" reads db.applications the same
+    // defensive way every other collection on this page is read
+    // (countOf — 0 if missing or not an array). AAWFIP does not yet
+    // export a structured `applications` collection into the
+    // Strategic Database (its own Notes & Tracker "Application
+    // tracker" widget is a UI placeholder, not synced data), so this
+    // reads 0 today. It is wired to the real field name rather than
+    // hidden or hard-coded, so it will reflect real data the moment a
+    // future sync populates db.applications — nothing is invented in
+    // the meantime.
+    var dashboardStats = [
+      { num: countOf(db.projects), label: 'Projects' },
+      { num: countOf(db.organisations), label: 'Organisations' },
+      { num: countOf(db.funders), label: 'Funders' },
+      { num: countUploadedDocuments(db.projects), label: 'Uploaded documents' },
+      { num: countOf(db.applications), label: 'Applications' },
+      { num: opportunities.totalFlagged, label: 'Opportunities flagged' },
+      { num: timeline.dueWithin30Days, label: 'Due within 30 days' },
+      { num: formatDate(meta.lastSyncedAt), label: 'Last synchronised' }
+    ];
+
+    var checklist = EXPECTED_COLLECTIONS.map(function (key) {
+      var present = Object.prototype.hasOwnProperty.call(db, key);
+      return '<li class="' + (present ? 'present' : 'missing') + '">' +
+        (present ? checkIconSvg : dashIconSvg) +
+        '<span>' + escapeHtml(key) + '</span>' +
+      '</li>';
+    }).join('');
+
+    var searchIndex = buildSearchIndex(db);
+    var projectIntel = buildProjectIntelligence(db);
+    var orgIntel = buildOrganisationIntelligence(db);
+
+    document.getElementById('panel').innerHTML =
+      '<div class="search-section">' +
+        '<div class="section-label">Global Search</div>' +
+        '<input type="text" id="globalSearchInput" class="search-input" autocomplete="off" ' +
+          'placeholder="Search projects, organisations, funders, documents, notes\u2026">' +
+        '<div class="filter-chips" id="searchFilterChips"></div>' +
+        '<div class="search-results" id="globalSearchResults"></div>' +
+      '</div>' +
+      '<div class="validated-header">' +
+        '<svg class="validated-badge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">' +
+          '<circle cx="12" cy="12" r="10"/><path d="M8 12.5l2.5 2.5L16 9" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '</svg>' +
+        '<div>' +
+          '<h2>Strategic Database loaded</h2>' +
+          '<div class="sub">Read from this browser\u2019s AAWFIP_StrategicDatabase. SIE only writes back to storage if you explicitly restore a backup via Backup &gt; Import above.</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="dash-heading">Strategic Dashboard</div>' +
+      '<div class="dash-stat-strip">' +
+        dashboardStats.map(function (s) {
+          return '<div class="dash-stat-cell"><div class="num">' + escapeHtml(s.num) + '</div><div class="label">' + escapeHtml(s.label) + '</div></div>';
+        }).join('') +
+      '</div>' +
+      '<div class="section-label">Database structure (schema v' + escapeHtml(meta.schemaVersion != null ? meta.schemaVersion : '\u2014') +
+        (integrity.versionCheck.status === 'current' ? '' :
+          ' <span class="integrity-pill ' + (integrity.versionCheck.status === 'unknown' ? 'warn' : 'warn') + '" style="margin-left:8px;">' +
+          (integrity.versionCheck.status === 'outdated' ? 'Outdated' : integrity.versionCheck.status === 'newer' ? 'Newer than SIE' : 'Unversioned') +
+          '</span>') +
+        ')</div>' +
+      '<ul class="check-list">' + checklist + '</ul>' +
+      '<div class="status-note">Source: ' + escapeHtml(meta.source || 'Unknown') + '</div>' +
+      '<div class="section-label" style="margin-top:34px;">Data Integrity &amp; Synchronisation</div>' +
+      '<div id="dataIntegrity" class="data-integrity"></div>' +
+      '<div class="section-label" style="margin-top:34px;">Project Intelligence</div>' +
+      '<div class="filter-chips" id="projectFilterChips"></div>' +
+      '<div class="project-intel" id="projectIntelList" style="margin-top:14px;"></div>' +
+      '<div class="section-label" style="margin-top:34px;">Organisation Intelligence</div>' +
+      '<div class="project-intel">' + renderOrganisationIntelligence(orgIntel) + '</div>' +
+      '<div class="section-label" style="margin-top:34px;">Ecosystem Mapping</div>' +
+      '<div id="ecosystemMapping" class="ecosystem-mapping"></div>' +
+      '<div class="section-label" style="margin-top:34px;">Strategic Opportunity Detection</div>' +
+      '<div id="opportunityDetection" class="opportunity-detection"></div>' +
+      '<div class="section-label" style="margin-top:34px;">Timeline Intelligence</div>' +
+      '<div id="timelineIntelligence" class="timeline-intelligence"></div>' +
+      '<div class="section-label" style="margin-top:34px;">Strategic Reports</div>' +
+      '<div id="strategicReports" class="strategic-reports"></div>';
+
+    // --- Global Search: category filter chips -----------------------
+    // 'All' plus one chip per SEARCH_CATEGORY_ORDER entry, each showing
+    // how many indexed records exist in that category. Picking a chip
+    // restricts runSearch to that category and also allows browsing it
+    // with an empty query (bypassing the minimum-query-length hint).
+    var searchCategoryCounts = { All: searchIndex.length };
+    SEARCH_CATEGORY_ORDER.forEach(function (c) { searchCategoryCounts[c] = 0; });
+    searchIndex.forEach(function (rec) { searchCategoryCounts[rec.category] = (searchCategoryCounts[rec.category] || 0) + 1; });
+
+    var activeSearchCategory = 'All';
+
+    function renderSearchFilterChips() {
+      var chipsEl = document.getElementById('searchFilterChips');
+      if (!chipsEl) return;
+      var cats = ['All'].concat(SEARCH_CATEGORY_ORDER);
+      chipsEl.innerHTML = cats.map(function (c) {
+        return '<button type="button" class="filter-chip' + (c === activeSearchCategory ? ' active' : '') + '" data-cat="' + escapeHtml(c) + '">' +
+          escapeHtml(c) + ' <span class="filter-chip-count">' + searchCategoryCounts[c] + '</span></button>';
+      }).join('');
+      Array.prototype.forEach.call(chipsEl.querySelectorAll('.filter-chip'), function (btn) {
+        btn.addEventListener('click', function () {
+          activeSearchCategory = btn.getAttribute('data-cat');
+          refreshSearch();
+        });
+      });
+    }
+
+    function refreshSearch() {
+      var value = document.getElementById('globalSearchInput').value;
+      renderSearchFilterChips();
+      renderSearchResults(runSearch(searchIndex, value, activeSearchCategory), value, activeSearchCategory);
+    }
+
+    // --- Project Intelligence: status filter chips -------------------
+    // Built from the distinct status values actually present on the
+    // computed project records — nothing invented, no fixed status
+    // list assumed. 'All' plus one chip per distinct status found.
+    var projectStatusCounts = { All: projectIntel.length };
+    projectIntel.forEach(function (pi) {
+      var key = pi.status ? pi.status : 'No status recorded';
+      projectStatusCounts[key] = (projectStatusCounts[key] || 0) + 1;
+    });
+    var projectStatusOrder = Object.keys(projectStatusCounts).filter(function (k) { return k !== 'All'; }).sort();
+    var activeProjectStatus = 'All';
+
+    function renderProjectFilterChips() {
+      var chipsEl = document.getElementById('projectFilterChips');
+      if (!chipsEl) return;
+      if (projectStatusOrder.length < 2) { chipsEl.innerHTML = ''; return; }
+      var cats = ['All'].concat(projectStatusOrder);
+      chipsEl.innerHTML = cats.map(function (c) {
+        return '<button type="button" class="filter-chip' + (c === activeProjectStatus ? ' active' : '') + '" data-status="' + escapeHtml(c) + '">' +
+          escapeHtml(c) + ' <span class="filter-chip-count">' + projectStatusCounts[c] + '</span></button>';
+      }).join('');
+      Array.prototype.forEach.call(chipsEl.querySelectorAll('.filter-chip'), function (btn) {
+        btn.addEventListener('click', function () {
+          activeProjectStatus = btn.getAttribute('data-status');
+          refreshProjectIntel();
+        });
+      });
+    }
+
+    function refreshProjectIntel() {
+      renderProjectFilterChips();
+      var filtered = activeProjectStatus === 'All' ? projectIntel : projectIntel.filter(function (pi) {
+        return (pi.status ? pi.status : 'No status recorded') === activeProjectStatus;
+      });
+      document.getElementById('projectIntelList').innerHTML = renderProjectIntelligence(filtered);
+    }
+
+    renderSearchResults(null, '', 'All');
+    renderSearchFilterChips();
+    refreshProjectIntel();
+    renderEcosystemGraph('ecosystemMapping', ecosystemGraph);
+    renderOpportunityDetection('opportunityDetection', opportunities);
+    renderTimelineIntelligence('timelineIntelligence', timeline);
+    renderDataIntegrity('dataIntegrity', integrity);
+    currentReportContext = {
+      db: db, graph: ecosystemGraph, opportunities: opportunities,
+      timeline: timeline, projectIntel: projectIntel, orgIntel: orgIntel,
+      integrity: integrity
+    };
+    renderStrategicReportsSection('strategicReports');
+
+    var searchDebounce = null;
+    document.getElementById('globalSearchInput').addEventListener('input', function (e) {
+      if (searchDebounce) clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(refreshSearch, 120);
+    });
+  }
+
+  /**
+   * showProcessingState
+   * ---------------------------------------------------------------
+   * A validated database still has to run buildEcosystemGraph,
+   * computeStrategicOpportunities, buildProjectIntelligence, etc.
+   * before renderValid can paint anything — synchronous work that
+   * can take a moment on a large Strategic Database. This puts a
+   * real, visible spinner up first so that work is never silent.
+   */
+  function showProcessingState() {
+    document.getElementById('pageMeta').textContent = 'Strategic Database found \u2014 building Strategic Intelligence views\u2026';
+    document.getElementById('panel').innerHTML =
+      '<div class="loading-state"><div class="spinner"></div><p>Building Strategic Intelligence views\u2026</p></div>';
+  }
+
+  function init() {
+    renderBackupControls();
+
+    var result = loadResult();
+    if (result.state === 'missing') {
+      renderMissing();
+    } else if (result.state === 'invalid') {
+      renderInvalid(result.reason);
+    } else {
+      showProcessingState();
+      // Give the browser a frame to actually paint the spinner above
+      // before the heavy, synchronous render work below blocks the
+      // main thread — otherwise the loading state would never be
+      // visible even for a large database.
+      window.requestAnimationFrame(function () {
+        setTimeout(function () { renderValid(result.db); }, 0);
+      });
+    }
+  }
+
+  // Same reasoning as showProcessingState: defer the very first call
+  // so the "Loading AAWFIP_StrategicDatabase…" state already present
+  // in the static HTML gets painted before init() does any work.
+  window.requestAnimationFrame(function () {
+    setTimeout(init, 0);
+  });
+})();
+</script>
+
+</body>
+</html>
