@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-11-27T15:43:21.658Z",
+  "generatedAt": "2026-11-28T14:38:53.878Z",
   "funders": {
     "wellcome-trust": {
       "name": "Wellcome Trust",
       "url": "https://wellcome.org/research-funding/schemes",
       "contentHash": "b27ed222d56317794df98be758fb32c06aad4c1e5ba44da0cd01224088c5880d",
-      "lastChecked": "2026-11-27T15:42:41.673Z",
+      "lastChecked": "2026-11-28T14:38:12.257Z",
       "lastChanged": "2026-11-25T16:17:52.481Z",
       "status": "ok",
       "error": null
@@ -14,7 +14,7 @@
       "name": "Tiny Beam Fund",
       "url": "https://tinybeamfund.org/About-Us",
       "contentHash": null,
-      "lastChecked": "2026-11-27T15:42:42.355Z",
+      "lastChecked": "2026-11-28T14:38:12.856Z",
       "lastChanged": null,
       "status": "error",
       "error": "fetch failed"
@@ -23,7 +23,7 @@
       "name": "Animal Charity Evaluators (ACE)",
       "url": "https://animalcharityevaluators.org/movement-grants/",
       "contentHash": "53d15b080e2d97e6db3b71f4e48a0a5c7181489fe36801ac5bd92f6792acf81e",
-      "lastChecked": "2026-11-27T15:42:53.347Z",
+      "lastChecked": "2026-11-28T14:38:23.851Z",
       "lastChanged": "2026-11-26T15:54:02.956Z",
       "status": "ok",
       "error": null
@@ -32,7 +32,7 @@
       "name": "Templeton World Charity Foundation (TWCF)",
       "url": "https://www.templetonworldcharity.org/our-priorities",
       "contentHash": "4e1361f278e7f13c184cbbdc9fb15927231e9b14b2be95d53ebc0b8a418c35ba",
-      "lastChecked": "2026-11-27T15:42:56.057Z",
+      "lastChecked": "2026-11-28T14:38:26.578Z",
       "lastChanged": "2026-09-23T10:21:49.199Z",
       "status": "ok",
       "error": null
@@ -41,7 +41,7 @@
       "name": "EA Funds — Animal Welfare Fund (AWF)",
       "url": "https://funds.effectivealtruism.org/funds/animal-welfare",
       "contentHash": "3e93d3804a26c79e1b34de9c2bf63d3ae8f95f7e92fb11048b9475588aa4a908",
-      "lastChecked": "2026-11-27T15:42:57.372Z",
+      "lastChecked": "2026-11-28T14:38:27.515Z",
       "lastChanged": "2026-11-25T16:18:09.467Z",
       "status": "ok",
       "error": null
@@ -49,9 +49,9 @@
     "animal-welfare-foundation-bva": {
       "name": "Animal Welfare Foundation (British Veterinary Association)",
       "url": "https://www.animalwelfarefoundation.org.uk/about-us/",
-      "contentHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "lastChecked": "2026-11-27T15:42:58.502Z",
-      "lastChanged": "2026-11-27T15:42:58.502Z",
+      "contentHash": "8e3b3283358bdb5309f7b590ff3fc29c5887494c0ec63be62e0b405984f48c69",
+      "lastChecked": "2026-11-28T14:38:28.351Z",
+      "lastChanged": "2026-11-28T14:38:28.351Z",
       "status": "ok",
       "error": null
     },
@@ -59,7 +59,7 @@
       "name": "Animal Welfare Institute (AWI)",
       "url": "https://awionline.org/content/funding-opportunities-awi",
       "contentHash": null,
-      "lastChecked": "2026-11-27T15:42:59.493Z",
+      "lastChecked": "2026-11-28T14:38:30.622Z",
       "lastChanged": null,
       "status": "error",
       "error": "HTTP 403"
@@ -68,7 +68,7 @@
       "name": "AZA Animal Care & Wellbeing Grants Fund",
       "url": "https://www.aza.org/animal-care-and-wellbeing-grants-fund",
       "contentHash": null,
-      "lastChecked": "2026-11-27T15:43:00.197Z",
+      "lastChecked": "2026-11-28T14:38:31.217Z",
       "lastChanged": null,
       "status": "error",
       "error": "HTTP 403"
@@ -77,7 +77,7 @@
       "name": "Gates Foundation (formerly Bill & Melinda Gates Foundation)",
       "url": "https://www.gatesfoundation.org/about/how-we-work/grant-opportunities",
       "contentHash": "1102cefd2d36b110d995bb289e14aa90969fd99a0c43c626bbf3592485e74e44",
-      "lastChecked": "2026-11-27T15:43:00.927Z",
+      "lastChecked": "2026-11-28T14:38:31.934Z",
       "lastChanged": "2026-11-13T13:30:37.253Z",
       "status": "ok",
       "error": null
@@ -85,9 +85,9 @@
     "usaid": {
       "name": "U.S. Agency for International Development (USAID)",
       "url": "https://en.wikipedia.org/wiki/United_States_Agency_for_International_Development",
-      "contentHash": "9d13e861f0da8d7d8254af61a723d4a8373566cdee559c71eeeef6c6470e20ac",
-      "lastChecked": "2026-11-27T15:43:01.540Z",
-      "lastChanged": "2026-11-27T15:43:01.540Z",
+      "contentHash": "3f6b5b131b41841dfe91741667419711960210ee404f6d9183ac1840b97e0253",
+      "lastChecked": "2026-11-28T14:38:32.661Z",
+      "lastChanged": "2026-11-28T14:38:32.661Z",
       "status": "ok",
       "error": null
     },
@@ -95,7 +95,7 @@
       "name": "EU Horizon Europe (European Commission)",
       "url": "https://research-and-innovation.ec.europa.eu/funding/funding-opportunities/funding-programmes-and-open-calls/horizon-europe_en",
       "contentHash": "7413833a92a1597010df9558e3d030109c82943428be85fc7cefb78dee3e321b",
-      "lastChecked": "2026-11-27T15:43:02.161Z",
+      "lastChecked": "2026-11-28T14:38:33.360Z",
       "lastChanged": "2026-11-27T15:43:02.161Z",
       "status": "ok",
       "error": null
@@ -104,7 +104,7 @@
       "name": "Senterra Funders (formerly Farmed Animal Funders / FAF)",
       "url": "https://www.senterrafunders.org/",
       "contentHash": "c532f2514773d1ab1fc69f746454970af144a40bc17af56300b4a2057434da27",
-      "lastChecked": "2026-11-27T15:43:03.169Z",
+      "lastChecked": "2026-11-28T14:38:34.865Z",
       "lastChanged": "2026-09-24T10:37:20.496Z",
       "status": "ok",
       "error": null
@@ -113,7 +113,7 @@
       "name": "Food and Agriculture Organization of the United Nations (FAO)",
       "url": "https://www.fao.org/home/en",
       "contentHash": "fe82285e7053c87b6f7c15685fd143bec1fc21a906f1b43b024b8e31bfdb79f6",
-      "lastChecked": "2026-11-27T15:43:03.876Z",
+      "lastChecked": "2026-11-28T14:38:35.849Z",
       "lastChanged": "2026-11-27T15:43:03.876Z",
       "status": "ok",
       "error": null
@@ -122,7 +122,7 @@
       "name": "The Joanna Toole Foundation (JTF)",
       "url": "https://www.joannatoolefoundation.org/",
       "contentHash": "6eb761dd5709b183e9e13d20feb6934e2d75ee5918fd2aa7b1b5eb79ff160fef",
-      "lastChecked": "2026-11-27T15:43:04.583Z",
+      "lastChecked": "2026-11-28T14:38:36.517Z",
       "lastChanged": "2026-11-19T14:47:35.774Z",
       "status": "ok",
       "error": null
@@ -131,7 +131,7 @@
       "name": "The Pew Charitable Trusts",
       "url": "https://www.pew.org/en/topics/protect-marine-life",
       "contentHash": "4adaeb973374cc9941ce857b2aa03fed6e8c945880cca576e432e06f89bb59e4",
-      "lastChecked": "2026-11-27T15:43:05.817Z",
+      "lastChecked": "2026-11-28T14:38:37.696Z",
       "lastChanged": "2026-11-25T16:18:17.918Z",
       "status": "ok",
       "error": null
@@ -140,7 +140,7 @@
       "name": "The Rockefeller Foundation",
       "url": "https://www.rockefellerfoundation.org/what-we-do/food/",
       "contentHash": "f2eabe7f6234daef2d8004fbcaed95e44fd81dd078a4b20244ed1bf3875b7e43",
-      "lastChecked": "2026-11-27T15:43:09.006Z",
+      "lastChecked": "2026-11-28T14:38:40.234Z",
       "lastChanged": "2026-11-14T12:37:05.199Z",
       "status": "ok",
       "error": null
@@ -149,7 +149,7 @@
       "name": "Morris Animal Foundation",
       "url": "https://www.morrisanimalfoundation.org/apply",
       "contentHash": "84cee4b206cfe04eb2954f3bcac498f3361cb18851b0a8e02b9caaca6847c587",
-      "lastChecked": "2026-11-27T15:43:09.691Z",
+      "lastChecked": "2026-11-28T14:38:41.034Z",
       "lastChanged": "2026-11-26T15:54:21.597Z",
       "status": "ok",
       "error": null
@@ -158,7 +158,7 @@
       "name": "Norad (Norwegian Agency for Development Cooperation)",
       "url": "https://www.norad.no/en/front/thematic-areas/climate-change-and-environment/fish-for-development/",
       "contentHash": null,
-      "lastChecked": "2026-11-27T15:43:10.447Z",
+      "lastChecked": "2026-11-28T14:38:41.956Z",
       "lastChanged": null,
       "status": "error",
       "error": "HTTP 404"
@@ -167,7 +167,7 @@
       "name": "Compassion in World Farming (CIWF)",
       "url": "https://www.ciwf.org.uk/farm-animals/fish/fish-welfare/",
       "contentHash": null,
-      "lastChecked": "2026-11-27T15:43:11.801Z",
+      "lastChecked": "2026-11-28T14:38:43.151Z",
       "lastChanged": null,
       "status": "error",
       "error": "HTTP 429"
@@ -176,7 +176,7 @@
       "name": "The Marchig Animal Welfare Trust",
       "url": "https://marchigtrust.org/",
       "contentHash": "e83e008a3749833f3d3f18cec803e5159b77c3d679a359043ada320d5ed84feb",
-      "lastChecked": "2026-11-27T15:43:12.553Z",
+      "lastChecked": "2026-11-28T14:38:43.907Z",
       "lastChanged": "2026-09-18T10:09:03.013Z",
       "status": "ok",
       "error": null
@@ -185,7 +185,7 @@
       "name": "The David and Lucile Packard Foundation",
       "url": "https://www.packard.org/initiative/ocean-initiative/",
       "contentHash": "0da2490c2d505d82b7fd7cc6d704bc43a5e18ee8a061867d46687d25244724c5",
-      "lastChecked": "2026-11-27T15:43:13.471Z",
+      "lastChecked": "2026-11-28T14:38:44.731Z",
       "lastChanged": "2026-11-03T13:06:43.046Z",
       "status": "ok",
       "error": null
@@ -194,7 +194,7 @@
       "name": "Science for Animal Welfare (formerly Universities Federation for Animal Welfare, UFAW)",
       "url": "https://scienceforanimalwelfare.org/",
       "contentHash": "675d988b684a5adaf016fc7bcf0c439ef45362033dd6b7e223ce23568e00e4e3",
-      "lastChecked": "2026-11-27T15:43:14.284Z",
+      "lastChecked": "2026-11-28T14:38:45.813Z",
       "lastChanged": "2026-10-30T11:45:33.575Z",
       "status": "ok",
       "error": null
@@ -203,7 +203,7 @@
       "name": "Humane Slaughter Association (HSA)",
       "url": "https://www.hsa.org.uk/grants-awards/grants-awards",
       "contentHash": null,
-      "lastChecked": "2026-11-27T15:43:15.026Z",
+      "lastChecked": "2026-11-28T14:38:46.685Z",
       "lastChanged": null,
       "status": "error",
       "error": "HTTP 403"
@@ -212,7 +212,7 @@
       "name": "Aquatic Life Institute (ALI)",
       "url": "https://www.ali.fish/about",
       "contentHash": "a6749f83f32bca1662677a616d5c87049d1a91f11e61896e86ba03c1031083a6",
-      "lastChecked": "2026-11-27T15:43:15.615Z",
+      "lastChecked": "2026-11-28T14:38:47.262Z",
       "lastChanged": "2026-11-05T13:36:43.446Z",
       "status": "ok",
       "error": null
@@ -221,7 +221,7 @@
       "name": "WorldFish",
       "url": "https://worldfishcenter.org/about-us",
       "contentHash": "152b4eadd0a8da07be34118c5e973281ceac10ba3eb1010b271bd371acff1c20",
-      "lastChecked": "2026-11-27T15:43:16.527Z",
+      "lastChecked": "2026-11-28T14:38:49.041Z",
       "lastChanged": "2026-11-26T15:54:28.732Z",
       "status": "ok",
       "error": null
@@ -230,7 +230,7 @@
       "name": "Eurogroup for Animals",
       "url": "https://www.eurogroupforanimals.org/who-we-are",
       "contentHash": "14b707a92b4abd963696cd11d119fedf1224b9d524d9a4388acb6e46a8ad8146",
-      "lastChecked": "2026-11-27T15:43:18.092Z",
+      "lastChecked": "2026-11-28T14:38:50.361Z",
       "lastChanged": "2026-11-27T15:43:18.092Z",
       "status": "ok",
       "error": null
@@ -239,7 +239,7 @@
       "name": "Sustainable Fisheries Partnership (SFP)",
       "url": "https://sustainablefish.org/about-us/",
       "contentHash": "d211134dc039523e75fd37842b470166ad884eec138f2fc2707135e6dc2dff9a",
-      "lastChecked": "2026-11-27T15:43:19.913Z",
+      "lastChecked": "2026-11-28T14:38:51.869Z",
       "lastChanged": "2026-10-22T10:44:59.021Z",
       "status": "ok",
       "error": null
@@ -248,7 +248,7 @@
       "name": "Aquaculture Stewardship Council (ASC)",
       "url": "https://asc-aqua.org/about-asc/",
       "contentHash": "aac7321582e8c8f802b06d64f601b06b66caa6eca03253a5e2db2bf6cdeed8ee",
-      "lastChecked": "2026-11-27T15:43:20.529Z",
+      "lastChecked": "2026-11-28T14:38:52.591Z",
       "lastChanged": "2026-11-25T16:18:32.374Z",
       "status": "ok",
       "error": null
